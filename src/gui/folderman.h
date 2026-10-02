@@ -280,6 +280,8 @@ private:
     void registerFolderWithSocketApi(Folder *folder);
 
     QVector<Folder *> _folders;
+    // Preserve orphaned Atum settings without opening their journal or guessing an account.
+    QVector<FolderDefinition> _unavailableFolders;
     QString _folderConfigPath;
 
     /// Folder aliases from the settings that weren't read

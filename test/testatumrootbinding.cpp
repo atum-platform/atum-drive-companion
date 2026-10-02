@@ -117,7 +117,7 @@ private Q_SLOTS:
     void refusesForeignBindingWithoutMutation_data()
     {
         QTest::addColumn<QString>("field");
-        for (const auto &field : {u"origin"_s, u"issuer"_s, u"subject"_s, u"space"_s, u"canonicalRoot"_s, u"journal"_s}) {
+        for (const auto &field : {u"origin"_s, u"issuer"_s, u"subject"_s, u"space"_s, u"canonicalRoot"_s, u"journal"_s, u"version"_s}) {
             QTest::newRow(qPrintable(field)) << field;
         }
     }
@@ -135,6 +135,7 @@ private Q_SLOTS:
         const auto bytes = QJsonDocument(binding).toJson();
         QVERIFY(writeFile(marker, bytes));
         QVERIFY(writeFile(QDir(dir.path()).filePath(AtumRootBinding::journalName()), "existing journal"));
+        QVERIFY(!AtumRootBinding::checkCandidate(dir.path(), identity()));
         QVERIFY(!AtumRootBinding::acquire(dir.path(), identity(), true));
         QCOMPARE(readFile(marker), bytes);
         QCOMPARE(readFile(QDir(dir.path()).filePath(AtumRootBinding::journalName())), QByteArray("existing journal"));
@@ -146,7 +147,7 @@ private Q_SLOTS:
         const auto file = QDir(dir.path()).filePath(u"work.txt"_s);
         QVERIFY(writeFile(file, "existing work"));
         QVERIFY(!AtumRootBinding::acquire(dir.path(), identity(), true));
-        QVERIFY(!AtumRootBinding::checkCandidate(dir.path(), identity().issuer, identity().subject));
+        QVERIFY(!AtumRootBinding::checkCandidate(dir.path(), identity()));
         QCOMPARE(readFile(file), QByteArray("existing work"));
         QVERIFY(QFile::remove(file));
         {
@@ -154,18 +155,19 @@ private Q_SLOTS:
             QVERIFY(owner);
         }
         QVERIFY(writeFile(file, "recovery requires inventory"));
+        QVERIFY(!AtumRootBinding::checkCandidate(dir.path(), identity()));
         QVERIFY(!AtumRootBinding::acquire(dir.path(), identity(), false));
         QCOMPARE(readFile(file), QByteArray("recovery requires inventory"));
     }
 
     void rejectsHomeAndManagedRootsAndDoesNotCreateCandidate()
     {
-        QVERIFY(!AtumRootBinding::checkCandidate(QDir::homePath(), identity().issuer, identity().subject));
+        QVERIFY(!AtumRootBinding::checkCandidate(QDir::homePath(), identity()));
         QTemporaryDir dir;
         QVERIFY(QDir(dir.path()).mkpath(u".hermes/skills"_s));
-        QVERIFY(!AtumRootBinding::checkCandidate(QDir(dir.path()).filePath(u".hermes/skills"_s), identity().issuer, identity().subject));
+        QVERIFY(!AtumRootBinding::checkCandidate(QDir(dir.path()).filePath(u".hermes/skills"_s), identity()));
         const auto candidate = QDir(dir.path()).filePath(u"Atum"_s);
-        QVERIFY(AtumRootBinding::checkCandidate(candidate, identity().issuer, identity().subject));
+        QVERIFY(AtumRootBinding::checkCandidate(candidate, identity()));
         QVERIFY(!QFileInfo::exists(candidate));
     }
 

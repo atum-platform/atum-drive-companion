@@ -134,8 +134,11 @@ QString AtumRootBinding::journalName()
     return u".atum-drive-journal.db"_s;
 }
 
-Result<void, QString> AtumRootBinding::checkCandidate(const QString &path, const QString &issuer, const QString &subject)
+Result<void, QString> AtumRootBinding::checkCandidate(const QString &path, const AtumRootIdentity &identity)
 {
+    if (identity.origin.isEmpty() || identity.issuer.isEmpty() || identity.subject.isEmpty()) {
+        return u"Sign in again to confirm this root's identity before syncing."_s;
+    }
     auto checked = safeRoot(path, true);
     if (!checked) {
         return QString::fromUtf8(checked.error());
@@ -143,9 +146,15 @@ Result<void, QString> AtumRootBinding::checkCandidate(const QString &path, const
     const auto &root = *checked;
     if (QFileInfo::exists(QDir(root).filePath(markerName)) || QFileInfo(QDir(root).filePath(markerName)).isSymLink()) {
         auto binding = readBinding(root);
-        if (!binding || binding->value(u"issuer"_s).toString() != issuer || binding->value(u"subject"_s).toString() != subject
-            || binding->value(u"canonicalRoot"_s).toString() != root) {
+        auto expectedIdentity = identity;
+        if (binding && expectedIdentity.space.isEmpty()) {
+            expectedIdentity.space = binding->value(u"space"_s).toString();
+        }
+        if (!binding || expectedIdentity.space.isEmpty() || *binding != expectedBinding(root, expectedIdentity) || !journalLinksSafe(root)) {
             return u"This root is bound to a different identity or location. Choose another root; existing files will be preserved."_s;
+        }
+        if (!QFileInfo::exists(QDir(root).filePath(journalName())) && !emptyForEnrollment(root, true)) {
+            return u"The bound root has files but no journal. Sync is paused pending inventory recovery."_s;
         }
     } else if (!emptyForEnrollment(root, false)) {
         return u"This folder already contains files. Choose an empty folder; inventory approval is required before adopting existing files."_s;
@@ -262,6 +271,11 @@ Result<std::unique_ptr<AtumRootBinding>, QString> AtumRootBinding::acquire(const
         if (!sameFile(owner->_directoryHandle, root) || !file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
             return u"Could not save the root binding. Sync has not started."_s;
         }
+#ifndef Q_OS_WIN
+        if (::fsync(static_cast<int>(owner->_directoryHandle)) != 0) {
+            return u"Could not durably save the root binding. Sync has not started."_s;
+        }
+#endif
     }
     return std::move(owner);
 }

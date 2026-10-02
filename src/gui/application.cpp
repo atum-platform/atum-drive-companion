@@ -95,6 +95,12 @@ void setUpInitialSyncFolder(AccountStatePtr accountStatePtr, bool useVfs)
                     return;
                 }
                 auto *space = spaces.first();
+                for (auto *existing : FolderMan::instance()->folders()) {
+                    if (existing->accountState() == accountStatePtr && existing->space() == space) {
+                        finalize();
+                        return;
+                    }
+                }
                 if (auto *folder = addFolder(accountStatePtr->account()->defaultSyncRoot(), QUrl(space->drive().getRoot().getWebDavUrl()),
                         space->drive().getRoot().getId(), space->displayName())) {
                     folder->setPriority(space->priority());

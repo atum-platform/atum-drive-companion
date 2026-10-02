@@ -23,7 +23,9 @@ class OPENCLOUD_GUI_EXPORT AtumRootBinding
 {
 public:
     static QString journalName();
-    static Result<void, QString> checkCandidate(const QString &path, const QString &issuer, const QString &subject);
+    // Before Graph discovery, an empty space checks the complete marker shape using its recorded space.
+    // Enrollment and resume always supply and compare the authoritative personal space.
+    static Result<void, QString> checkCandidate(const QString &path, const AtumRootIdentity &identity);
     static Result<std::unique_ptr<AtumRootBinding>, QString> acquire(const QString &path, const AtumRootIdentity &identity, bool enrollEmpty);
     ~AtumRootBinding();
     bool matches(const AtumRootIdentity &identity) const;

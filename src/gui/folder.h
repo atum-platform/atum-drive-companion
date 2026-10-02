@@ -307,6 +307,7 @@ private:
 
     bool checkLocalPath(bool enrollEmptyRoot);
     void verifyAtumRoot();
+    bool atumSpaceMatches() const;
 
     SyncOptions loadSyncOptions();
 

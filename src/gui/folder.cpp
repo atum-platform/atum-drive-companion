@@ -29,6 +29,7 @@
 #include "folderwatcher.h"
 #include "gui/accountsettings.h"
 #include "gui/folderdefinition.h"
+#include "guiutility.h"
 #include "libsync/graphapi/spacesmanager.h"
 #include "libsync/vfs/vfs.h"
 #include "localdiscoverytracker.h"
@@ -39,7 +40,6 @@
 #include "syncresult.h"
 #include "syncrunfilelog.h"
 #include "theme.h"
-#include "guiutility.h"
 
 #ifdef Q_OS_WIN
 #include "common/utility_win.h"
@@ -104,6 +104,21 @@ Folder::Folder(const FolderDefinition &definition, const AccountStatePtr &accoun
             rootCheck->start();
         }
         connect(_accountState.data(), &AccountState::isConnectedChanged, this, &Folder::canSyncChanged);
+        connect(_accountState->account()->spacesManager(), &GraphApi::SpacesManager::updated, this, [this] {
+            if (_atumRoot && !atumSpaceMatches()) {
+                const auto message = tr("The account does not have exactly one matching personal space. Sync is paused; files and journal are preserved.");
+                if (isSyncRunning()) {
+                    _engine->abort(message);
+                }
+                if (syncState() != SyncResult::Paused) {
+                    _syncResult.appendErrorString(message);
+                    setSyncState(SyncResult::Paused);
+                }
+            } else if (_atumRoot && !_atumRootInvalid && syncState() == SyncResult::Paused && !isSyncPaused()) {
+                setSyncState(SyncResult::Queued);
+            }
+            Q_EMIT canSyncChanged();
+        });
 
 
         auto *context = new QObject(this);
@@ -274,6 +289,9 @@ SyncOptions Folder::loadSyncOptions()
     opt._vfs = _vfs;
     // account is currently a shared ptr and thus the lifetime of the account object is guaranteed
     opt._parallelNetworkJobs = [account = _accountState->account()] { return account->isHttp2Supported() ? 20 : 6; };
+    if (_atumRoot) {
+        opt._localRootValid = [this] { return canSync(); };
+    }
 
     return opt;
 }
@@ -435,14 +453,22 @@ void Folder::verifyAtumRoot()
     }
 }
 
+bool Folder::atumSpaceMatches() const
+{
+    const auto spaces = _accountState->account()->spacesManager()->spaces();
+    const auto personalCount = std::count_if(spaces.begin(), spaces.end(),
+        [](const auto *candidate) { return !candidate->disabled() && candidate->drive().getDriveType() == QStringLiteral("personal"); });
+    const auto *personal = space();
+    return personalCount == 1 && personal && !personal->disabled() && personal->drive().getDriveType() == QStringLiteral("personal")
+        && _definition.webDavUrl() == QUrl(personal->drive().getRoot().getWebDavUrl());
+}
+
 bool Folder::canSync() const
 {
     if (Theme::instance()->oauthIdentityProfile()) {
         const auto account = _accountState->account();
         if (_atumRootInvalid || !_atumRoot || !QFileInfo::exists(_definition.absoluteJournalPath())
-            || !_atumRoot->matches({account->url().toString(), account->atumIssuer(), account->atumSubject(), _definition.spaceId()}) || !space()
-            || space()->disabled() || space()->drive().getDriveType() != QStringLiteral("personal")
-            || _definition.webDavUrl() != QUrl(space()->drive().getRoot().getWebDavUrl())) {
+            || !_atumRoot->matches({account->url().toString(), account->atumIssuer(), account->atumSubject(), _definition.spaceId()}) || !atumSpaceMatches()) {
             return false;
         }
     }
@@ -922,8 +948,14 @@ void Folder::startSync()
         return;
     }
 
-    if (!OC_ENSURE(canSync())) {
-        qCCritical(lcFolder) << u"ERROR folder is currently not sync able.";
+    if (!canSync()) {
+        if (Theme::instance()->oauthIdentityProfile()) {
+            verifyAtumRoot();
+            qCWarning(lcFolder) << u"Atum root is unavailable or not ready; sync remains paused.";
+        } else {
+            OC_ENSURE(false);
+            qCCritical(lcFolder) << u"ERROR folder is currently not sync able.";
+        }
         return;
     }
 

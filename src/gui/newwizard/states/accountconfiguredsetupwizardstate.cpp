@@ -63,7 +63,13 @@ void AccountConfiguredSetupWizardState::evaluatePage()
 
         if (const auto profile = Theme::instance()->oauthIdentityProfile()) {
             const auto *strategy = _context->accountBuilder().authenticationStrategy();
-            const auto result = AtumRootBinding::checkCandidate(syncTargetDir, profile->issuer, strategy ? strategy->idToken().sub() : QString());
+            const auto duplicate = FolderMan::instance()->checkPathValidityForNewFolder(syncTargetDir, FolderMan::NewFolderType::SpacesFolder, {});
+            if (!duplicate.isEmpty()) {
+                emitEvaluationFailedError(duplicate);
+                return;
+            }
+            const auto result = AtumRootBinding::checkCandidate(
+                syncTargetDir, {profile->driveOrigin.toString(), profile->issuer, strategy ? strategy->idToken().sub() : QString(), {}});
             if (!result) {
                 emitEvaluationFailedError(result.error());
                 return;

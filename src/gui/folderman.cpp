@@ -187,6 +187,7 @@ std::optional<qsizetype> FolderMan::loadFolders()
 
     auto settings = ConfigFile::makeQSettings();
     const auto size = settings.beginReadArray(foldersC());
+    _unavailableFolders.clear();
 
     for (auto i = 0; i < size; ++i) {
         settings.setArrayIndex(i);
@@ -197,11 +198,16 @@ std::optional<qsizetype> FolderMan::loadFolders()
         }
 
         auto vfs = VfsPluginManager::instance().createVfsFromPlugin(folderDefinition.virtualFilesMode);
+        auto account = AccountManager::instance()->account(folderDefinition.accountUUID());
+        if (Theme::instance()->oauthIdentityProfile() && (!vfs || account.isNull())) {
+            qCWarning(lcFolderMan) << u"Atum folder settings are unavailable; preserved without opening the root:" << folderDefinition.localPath();
+            _unavailableFolders.push_back(std::move(folderDefinition));
+            continue;
+        }
         if (!vfs) {
             // TODO: Must do better error handling
             qFatal("Could not load plugin");
         }
-        auto account = AccountManager::instance()->account(folderDefinition.accountUUID());
         if (account.isNull()) {
             qFatal("Could not load account");
         }
@@ -209,6 +215,14 @@ std::optional<qsizetype> FolderMan::loadFolders()
     }
     settings.endArray();
 
+    if (!_unavailableFolders.isEmpty()) {
+        auto *message = new QMessageBox(QMessageBox::Warning, tr("Atum Drive is paused"),
+            tr("Some saved roots have an unavailable account or sync component. Their settings, files and journals were preserved. Restore the original "
+               "account and restart Atum Drive to resume."),
+            QMessageBox::Ok);
+        message->setAttribute(Qt::WA_DeleteOnClose);
+        message->open();
+    }
     Q_EMIT folderListChanged();
 
     return _folders.size();
@@ -218,7 +232,7 @@ void FolderMan::saveFolders()
 {
     auto settings = ConfigFile::makeQSettings();
     settings.remove(foldersC());
-    settings.beginWriteArray(foldersC(), _folders.size());
+    settings.beginWriteArray(foldersC(), _folders.size() + _unavailableFolders.size());
     int i = 0;
     for (const auto folder : std::as_const(_folders)) {
         settings.setArrayIndex(i++);
@@ -228,6 +242,10 @@ void FolderMan::saveFolders()
         definitionToSave.setWebDavUrl(folder->webDavUrl());
         definitionToSave.setDisplayName(folder->displayName());
         FolderDefinition::save(settings, definitionToSave);
+    }
+    for (const auto &definition : std::as_const(_unavailableFolders)) {
+        settings.setArrayIndex(i++);
+        FolderDefinition::save(settings, definition);
     }
     settings.endArray();
 }
@@ -375,6 +393,13 @@ Folder *FolderMan::addFolder(const AccountStatePtr &accountState, const FolderDe
         }
         definition.journalPath = AtumRootBinding::journalName();
         definition.virtualFilesMode = Vfs::Mode::Off;
+        const auto duplicate = checkPathValidityForNewFolder(definition.localPath(), NewFolderType::SpacesFolder, accountState->account()->uuid());
+        const auto candidate = AtumRootBinding::checkCandidate(definition.localPath(),
+            {accountState->account()->url().toString(), accountState->account()->atumIssuer(), accountState->account()->atumSubject(), definition.spaceId()});
+        if (!duplicate.isEmpty() || !candidate) {
+            qCWarning(lcFolderMan) << u"Atum root was not added:" << (duplicate.isEmpty() ? candidate.error() : duplicate);
+            return nullptr;
+        }
     } else {
         definition.journalPath = SyncJournalDb::makeDbName(folderDefinition.localPath());
     }
