@@ -176,3 +176,17 @@ scheduled release trigger is removed: this repository does not schedule vendor
 signing or releases. Normal PR validation still uses the existing hosted Linux,
 macOS and Windows build/test matrix. Required current-head checks must be observed
 before merging; an empty check list is not a passing result.
+
+The fork-specific workflow gate was enabled by the owner without changing the
+action allowlist. Linux then exposed a missing real Secret Service. The fixture
+now creates a private temporary D-Bus/keyring environment and exercises real
+write/read/delete before tests, rather than enabling plaintext fallback. Runs
+37003038322 and 37006016763 failed at this preflight. The latter retained the
+concrete error: `/usr/bin/gnome-keyring-daemon: Operation not permitted`, before
+the daemon started. The likely cause is Alma's executable CAP_IPC_LOCK outside
+the hosted container's capability bounding set. The fixture logs getcap output
+and installs a private copy without extended attributes/file capabilities; the
+system daemon and container permissions are unchanged. The copy handles only
+generated synthetic credentials and is removed by the fixture's existing trap.
+`bash -n` and `git diff --check` pass locally. The next exact-head hosted run must
+confirm the diagnosis and execute the real custody tests before merge.
