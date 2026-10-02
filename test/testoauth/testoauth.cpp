@@ -481,7 +481,7 @@ private Q_SLOTS:
                     {QStringLiteral("registration_endpoint"), QString(identity.issuer + QStringLiteral("registration"))}};
             } else if (request.url().path() == QStringLiteral("/token")) {
                 ++tokenRequests;
-                const QUrlQuery posted(QString::fromUtf8(body->readAll()));
+                const QUrlQuery posted(QString::fromUtf8(body->peek(body->bytesAvailable())));
                 privateRequestsPinned = privateRequestsPinned && op == QNetworkAccessManager::PostOperation
                     && posted.queryItemValue(QStringLiteral("client_id")) == identity.clientId
                     && posted.queryItemValue(QStringLiteral("scope")) == identity.scopes
@@ -595,7 +595,7 @@ private Q_SLOTS:
                     {QStringLiteral("registration_endpoint"), QString(identity.issuer + QStringLiteral("registration"))}};
             } else if (request.url().path() == QStringLiteral("/token")) {
                 ++tokens;
-                const QUrlQuery posted(QString::fromUtf8(body->readAll()));
+                const QUrlQuery posted(QString::fromUtf8(body->peek(body->bytesAvailable())));
                 requestsValid = requestsValid && posted.queryItemValue(QStringLiteral("grant_type")) == QStringLiteral("refresh_token")
                     && posted.queryItemValue(QStringLiteral("refresh_token")) == QStringLiteral("synthetic-old-refresh")
                     && posted.queryItemValue(QStringLiteral("client_id")) == identity.clientId
