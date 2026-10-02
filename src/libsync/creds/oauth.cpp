@@ -558,6 +558,9 @@ void OAuth::persist(const OCC::AccountPtr &accountPtr, const QVariantMap &dynami
     }
     if (idToken.isValid()) {
         accountPtr->credentialManager()->set(idTokenC(), idToken.toJson());
+        if (const auto profile = Theme::instance()->oauthIdentityProfile()) {
+            accountPtr->setAtumIdentity(idToken.toJson().value(QStringLiteral("iss")).toString(), idToken.sub());
+        }
     } else {
         accountPtr->credentialManager()->clear(idTokenC());
     }

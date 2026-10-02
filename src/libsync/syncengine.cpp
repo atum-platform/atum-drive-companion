@@ -27,6 +27,7 @@
 #include "filesystem.h"
 #include "owncloudpropagator.h"
 #include "propagatedownload.h"
+#include "theme.h"
 #include "vfs/vfs.h"
 
 #include <chrono>
@@ -790,6 +791,9 @@ bool SyncEngine::isExcluded(QStringView filePath) const
 bool SyncEngine::loadDefaultExcludes()
 {
     ConfigFile::setupDefaultExcludeFilePaths(*_excludedFiles);
+    if (Theme::instance()->oauthIdentityProfile()) {
+        _excludedFiles->setAtumRootExclusions();
+    }
     return _excludedFiles->reloadExcludeFiles();
 }
 

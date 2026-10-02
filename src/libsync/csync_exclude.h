@@ -110,6 +110,9 @@ public:
      */
     void clearManualExcludes();
 
+    /// Pinned Atum roots always exclude credentials, journal and managed runtime/source.
+    void setAtumRootExclusions();
+
     /**
      * Adjusts behavior of wildcards. Only used for testing.
      */
@@ -210,6 +213,7 @@ private:
 
     /// Exclude patterns added with addManualExclude()
     QStringList _manualExcludes;
+    QStringList _atumExcludes;
 
     /// List of all active exclude patterns
     QStringList _allExcludes;

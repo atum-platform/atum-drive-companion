@@ -39,6 +39,7 @@ class QSettings;
 
 namespace OCC {
 
+class AtumRootBinding;
 class Vfs;
 class SyncEngine;
 class SyncRunFileLog;
@@ -298,12 +299,14 @@ private Q_SLOTS:
 private:
     /** Create a new Folder
      */
-    Folder(const FolderDefinition &definition, const AccountStatePtr &accountState, std::unique_ptr<Vfs> &&vfs, QObject *parent = nullptr);
+    Folder(const FolderDefinition &definition, const AccountStatePtr &accountState, std::unique_ptr<Vfs> &&vfs, QObject *parent = nullptr,
+        bool enrollEmptyRoot = false);
 
 
     void showSyncResultPopup();
 
-    bool checkLocalPath();
+    bool checkLocalPath(bool enrollEmptyRoot);
+    void verifyAtumRoot();
 
     SyncOptions loadSyncOptions();
 
@@ -350,6 +353,9 @@ private:
     /// Reset when no follow-up is requested.
     int _consecutiveFollowUpSyncs = 0;
 
+    // Destroy the journal before releasing root ownership.
+    bool _atumRootInvalid = false;
+    std::unique_ptr<AtumRootBinding> _atumRoot;
     mutable SyncJournalDb _journal;
 
     QScopedPointer<SyncRunFileLog> _fileLog;

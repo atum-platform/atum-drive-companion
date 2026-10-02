@@ -265,8 +265,7 @@ private:
     /** Adds a new folder, does not add it to the account settings and
      *  does not set an account on the new folder.
       */
-    Folder *addFolderInternal(FolderDefinition folderDefinition,
-        const AccountStatePtr &accountState, std::unique_ptr<Vfs> vfs);
+    Folder *addFolderInternal(FolderDefinition folderDefinition, const AccountStatePtr &accountState, std::unique_ptr<Vfs> vfs, bool enrollEmptyRoot = false);
 
     /* unloads a folder object, does not delete it */
     void unloadFolder(Folder *);

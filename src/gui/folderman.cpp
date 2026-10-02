@@ -17,6 +17,7 @@
 #include "account.h"
 #include "accountmanager.h"
 #include "accountstate.h"
+#include "atumrootbinding.h"
 #include "common/asserts.h"
 #include "configfile.h"
 #include "gui/folder.h"
@@ -191,7 +192,7 @@ std::optional<qsizetype> FolderMan::loadFolders()
         settings.setArrayIndex(i);
         FolderDefinition folderDefinition = FolderDefinition::load(settings);
 
-        if (SyncJournalDb::dbIsTooNewForClient(folderDefinition.absoluteJournalPath())) {
+        if (!Theme::instance()->oauthIdentityProfile() && SyncJournalDb::dbIsTooNewForClient(folderDefinition.absoluteJournalPath())) {
             continue;
         }
 
@@ -366,9 +367,19 @@ Folder *FolderMan::addFolder(const AccountStatePtr &accountState, const FolderDe
 {
     // Choose a db filename
     auto definition = folderDefinition;
-    definition.journalPath = SyncJournalDb::makeDbName(folderDefinition.localPath());
+    const bool atum = Theme::instance()->oauthIdentityProfile().has_value();
+    if (atum) {
+        const auto canonical = QFileInfo(definition.localPath()).canonicalFilePath();
+        if (!canonical.isEmpty()) {
+            definition.setLocalPath(canonical);
+        }
+        definition.journalPath = AtumRootBinding::journalName();
+        definition.virtualFilesMode = Vfs::Mode::Off;
+    } else {
+        definition.journalPath = SyncJournalDb::makeDbName(folderDefinition.localPath());
+    }
 
-    if (!ensureJournalGone(definition.absoluteJournalPath())) {
+    if (!atum && !ensureJournalGone(definition.absoluteJournalPath())) {
         return nullptr;
     }
 
@@ -378,7 +389,7 @@ Folder *FolderMan::addFolder(const AccountStatePtr &accountState, const FolderDe
         return nullptr;
     }
 
-    auto folder = addFolderInternal(definition, accountState, std::move(vfs));
+    auto folder = addFolderInternal(definition, accountState, std::move(vfs), atum);
 
     if (folder) {
         Q_EMIT folderSyncStateChange(folder);
@@ -389,12 +400,9 @@ Folder *FolderMan::addFolder(const AccountStatePtr &accountState, const FolderDe
     return folder;
 }
 
-Folder *FolderMan::addFolderInternal(
-    FolderDefinition folderDefinition,
-    const AccountStatePtr &accountState,
-    std::unique_ptr<Vfs> vfs)
+Folder *FolderMan::addFolderInternal(FolderDefinition folderDefinition, const AccountStatePtr &accountState, std::unique_ptr<Vfs> vfs, bool enrollEmptyRoot)
 {
-    auto folder = new Folder(folderDefinition, accountState, std::move(vfs), this);
+    auto folder = new Folder(folderDefinition, accountState, std::move(vfs), this, enrollEmptyRoot);
 
     qCInfo(lcFolderMan) << u"Adding folder to Folder Map " << folder << folder->path();
     _folders.push_back(folder);

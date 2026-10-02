@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-02",
+  "platform": "macOS arm64",
+  "source_checkpoint": "root continuation after e16c00f; commit contains this receipt",
+  "sdk": "Qt 6.11.1 / QtKeychain 0.16 / official macos-clang-arm64 SDK",
+  "suites": [
+    {
+      "suite": "testatumrootbinding",
+      "exit_code": 0,
+      "tests": "16",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.865"
+    },
+    {
+      "suite": "testfolderman",
+      "exit_code": 0,
+      "tests": "5",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.033"
+    },
+    {
+      "suite": "testexcludedfiles",
+      "exit_code": 0,
+      "tests": "16",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.562"
+    },
+    {
+      "suite": "testoauth",
+      "exit_code": 0,
+      "tests": "52",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "13.518"
+    },
+    {
+      "suite": "testcredentialmanager",
+      "exit_code": 0,
+      "tests": "16",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "1.535"
+    }
+  ],
+  "live_pinned_root_proof": false,
+  "signed_release_acceptance": false
+}

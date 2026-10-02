@@ -107,6 +107,7 @@ bool AccountManager::restore()
         acc->setUrl(urlConfig.toUrl());
 
         acc->_displayName = settings.value(davUserDisplyNameC()).toString();
+        acc->setAtumIdentity(settings.value("atum-issuer").toString(), settings.value("atum-subject").toString());
 
         auto capabilities = settings.value(capabilitesC()).value<QVariantMap>();
         capabilities.insert(u"cached"_s, true); // mark as cached capabilities, this will trigger a capabilitiesChanged signal once we got real capabilities
@@ -143,6 +144,8 @@ void AccountManager::save()
         qCDebug(lcAccountManager) << u"Saving account" << account->url().toString();
         settings.setValue(urlC(), account->_url.toString());
         settings.setValue(davUserDisplyNameC(), account->_displayName);
+        settings.setValue("atum-issuer", account->atumIssuer());
+        settings.setValue("atum-subject", account->atumSubject());
         settings.setValue(userUUIDC(), account->uuid());
         if (account->hasCapabilities()) {
             settings.setValue(capabilitesC(), account->capabilities().raw());
@@ -215,7 +218,7 @@ void AccountManager::deleteAccount(AccountStatePtr account)
     // AccountStatePtr occurrences:
     _accounts.erase(it);
 
-    if (account->account()->hasDefaultSyncRoot()) {
+    if (!Theme::instance()->oauthIdentityProfile() && account->account()->hasDefaultSyncRoot()) {
         Utility::unmarkDirectoryAsSyncRoot(account->account()->defaultSyncRoot());
     }
 

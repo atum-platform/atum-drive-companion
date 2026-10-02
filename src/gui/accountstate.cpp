@@ -410,6 +410,9 @@ void AccountState::checkConnectivity(bool blockJobs)
         this, &AccountState::slotConnectionValidatorResult);
 
     connect(_connectionValidator, &ConnectionValidator::sslErrors, this, [blockJobs, this](const QList<QSslError> &errors) {
+        if (Theme::instance()->oauthIdentityProfile()) {
+            return;
+        }
         if (NetworkInformation::instance()->isBehindCaptivePortal()) {
             return;
         }
