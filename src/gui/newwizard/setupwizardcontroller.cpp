@@ -1,5 +1,6 @@
 #include "setupwizardcontroller.h"
 
+#include "creds/httpcredentials.h"
 #include "gui/application.h"
 #include "gui/folderman.h"
 #include "pages/accountconfiguredwizardpage.h"
@@ -89,6 +90,10 @@ SetupWizardWidget *SetupWizardController::window()
 
 void SetupWizardController::changeStateTo(SetupWizardState nextState, ChangeReason reason)
 {
+    if (_pendingAccount) {
+        _pendingAccount->credentials()->forgetSensitiveData();
+        _pendingAccount.clear();
+    }
     // validate initial state
     Q_ASSERT(nextState == SetupWizardState::ServerUrlState || _currentState != nullptr);
 
@@ -164,10 +169,26 @@ void SetupWizardController::changeStateTo(SetupWizardState nextState, ChangeReas
             return;
         }
         case SetupWizardState::AccountConfiguredState: {
+            if (_pendingAccount) {
+                return;
+            }
             const auto *pagePtr = qobject_cast<AccountConfiguredWizardPage *>(_currentState->page());
-            auto account = _context->accountBuilder().build();
-            Q_ASSERT(account != nullptr);
-            Q_EMIT finished(account, pagePtr->syncMode());
+            _pendingAccount = _context->accountBuilder().build();
+            Q_ASSERT(_pendingAccount != nullptr);
+            auto credentials = qobject_cast<HttpCredentials *>(_pendingAccount->credentials());
+            Q_ASSERT(credentials);
+            const auto syncMode = pagePtr->syncMode();
+            connect(credentials, &HttpCredentials::credentialsStored, this, [this, syncMode](bool success) {
+                auto account = _pendingAccount;
+                _pendingAccount.clear();
+                if (success) {
+                    Q_EMIT finished(account, syncMode);
+                } else {
+                    _context->window()->showErrorMessage(tr("Could not save credentials securely. Unlock the keychain and sign in again."));
+                    changeStateTo(SetupWizardState::CredentialsState);
+                }
+            });
+            credentials->persist();
             return;
         }
         default:
@@ -190,5 +211,10 @@ void SetupWizardController::changeStateTo(SetupWizardState nextState, ChangeReas
     _context->window()->displayPage(_currentState->page(), _currentState->state());
 }
 
-SetupWizardController::~SetupWizardController() noexcept { }
+SetupWizardController::~SetupWizardController() noexcept
+{
+    if (_pendingAccount) {
+        _pendingAccount->credentials()->forgetSensitiveData();
+    }
+}
 }

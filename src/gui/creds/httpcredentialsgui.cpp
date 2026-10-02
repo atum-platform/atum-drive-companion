@@ -18,6 +18,7 @@
 #include "accountmodalwidget.h"
 #include "application.h"
 #include "common/asserts.h"
+#include "creds/credentialmanager.h"
 #include "creds/qmlcredentials.h"
 #include "gui/accountsettings.h"
 #include "networkjobs.h"
@@ -32,23 +33,40 @@ namespace OCC {
 
 Q_LOGGING_CATEGORY(lcHttpCredentialsGui, "sync.credentials.http.gui", QtInfoMsg)
 
-HttpCredentialsGui::HttpCredentialsGui(const QString &accessToken, const QString &refreshToken)
-    : HttpCredentials(accessToken)
+HttpCredentialsGui::HttpCredentialsGui()
 {
+    connect(this, &HttpCredentials::credentialsStored, this, [this](bool success) {
+        if (success) {
+            Q_EMIT oAuthLoginAccepted();
+        } else {
+            Q_EMIT oAuthErrorOccurred();
+        }
+    });
+}
+
+HttpCredentialsGui::HttpCredentialsGui(const QString &accessToken, const QString &refreshToken)
+    : HttpCredentialsGui()
+{
+    _accessToken = accessToken;
     _refreshToken = refreshToken;
 }
 
 void HttpCredentialsGui::restartOauth()
 {
     qCDebug(lcHttpCredentialsGui) << u"showing modal dialog asking user to log in again via OAuth2";
-    if (_asyncAuth) {
+    if (_asyncAuth || _account->credentialManager()->hasPendingDeletion()) {
         return;
     }
     if (!OC_ENSURE_NOT(_modalWidget)) {
         _modalWidget->deleteLater();
     }
     _asyncAuth.reset(new AccountBasedOAuth(_account->sharedFromThis(), this));
-    connect(_asyncAuth.data(), &OAuth::result, this, &HttpCredentialsGui::asyncAuthResult);
+    const auto generation = ++_credentialGeneration;
+    connect(_asyncAuth.data(), &OAuth::result, this, [this, generation](OAuth::Result result, const QString &token, const QString &refreshToken) {
+        if (generation == _credentialGeneration) {
+            asyncAuthResult(result, token, refreshToken);
+        }
+    });
 
     auto *oauthCredentials = new QmlOAuthCredentials(_asyncAuth.data(), _account->url(), _account->davDisplayName());
     _modalWidget = new AccountModalWidget(tr("Login required"), QUrl(QStringLiteral("qrc:/qt/qml/eu/OpenCloud/gui/qml/credentials/OAuthCredentials.qml")),
@@ -88,15 +106,25 @@ void HttpCredentialsGui::asyncAuthResult(OAuth::Result r, const QString &token, 
         Q_EMIT oAuthErrorOccurred();
         return;
     case OAuth::LoggedIn:
-        Q_EMIT oAuthLoginAccepted();
         break;
     }
 
     _accessToken = token;
     _refreshToken = refreshToken;
-    _ready = true;
     persist();
-    Q_EMIT fetched();
+}
+
+void HttpCredentialsGui::forgetSensitiveData()
+{
+    if (_asyncAuth) {
+        _asyncAuth->disconnect(this);
+        _asyncAuth.reset();
+    }
+    if (_modalWidget) {
+        _modalWidget->reject();
+        _modalWidget.clear();
+    }
+    HttpCredentials::forgetSensitiveData();
 }
 
 

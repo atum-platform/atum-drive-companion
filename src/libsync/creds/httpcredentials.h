@@ -25,6 +25,9 @@
 
 class QNetworkReply;
 class QAuthenticator;
+namespace QKeychain {
+class Job;
+}
 
 namespace OCC {
 class OAuth;
@@ -48,9 +51,6 @@ class OPENCLOUD_SYNC_EXPORT HttpCredentials : public AbstractCredentials
 public:
     /// Don't add credentials if this is set on a QNetworkRequest
     static constexpr QNetworkRequest::Attribute DontAddCredentialsAttribute = QNetworkRequest::User;
-    // Only exposed for testing
-    static std::chrono::seconds TokenRefreshDefaultTimeoutOneError;
-
     explicit HttpCredentials(const QString &accessToken);
 
     AccessManager *createAM() const override;
@@ -66,6 +66,9 @@ public:
      */
     bool refreshAccessToken();
 
+Q_SIGNALS:
+    void credentialsStored(bool success);
+
 
 protected:
     HttpCredentials() = default;
@@ -80,9 +83,10 @@ protected:
     QString _fetchErrorString;
     bool _ready = false;
     QPointer<AccountBasedOAuth> _oAuthJob;
+    quint64 _credentialGeneration = 0;
 
 private:
-    bool refreshAccessTokenInternal(int tokenRefreshRetriesCount);
+    QPointer<QKeychain::Job> _persistenceJob;
 };
 
 

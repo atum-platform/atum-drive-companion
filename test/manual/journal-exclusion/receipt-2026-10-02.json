@@ -1,0 +1,12 @@
+{
+  "schema": "atum.drive.journal-upstream-exclusion/1",
+  "samePathAndSymlinkContendersBlockedWhileOwnerAlive": true,
+  "oneContenderPerCrashRecovery": true,
+  "simultaneousContenderCrashRecoveryProved": false,
+  "crashedOwnerReleasedLock": true,
+  "localEditRetained": true,
+  "realSyncJournalDb": true,
+  "fullDesktopAcceptance": false,
+  "onlyGeneratedTestRoot": true,
+  "containsSecrets": false
+}

@@ -8,6 +8,7 @@
 #include <QDesktopServices>
 
 #include "common/asserts.h"
+#include "libsync/creds/credentialmanager.h"
 #include "libsync/creds/httpcredentials.h"
 #include "libsync/creds/oauth.h"
 #include "testutils/syncenginetestutils.h"
@@ -955,13 +956,13 @@ private Q_SLOTS:
         QCOMPARE(test.refreshFinishedSpy->count(), 0);
     }
 
-    void testTransientRefreshDoesNotEmitAuthFailed()
+    void testLostRefreshReplyDoesNotReplayRotatingToken()
     {
         QObject replyParent;
         int tokenRequestCount = 0;
 
-        // Use TimeoutError: resets nextTry to 0, so it never reaches TokenRefreshMaxRetries,
-        // and has TokenRefreshDefaultTimeout (30s) so no retry fires during our test window.
+        // A timeout may follow a consumed rotating token. Require browser login,
+        // preserve queued uploads, and never replay the consumed token.
         auto override = [&replyParent, &tokenRequestCount](QNetworkAccessManager::Operation op, const QNetworkRequest &req, QIODevice *) -> QNetworkReply * {
             if (req.url().path().endsWith(QLatin1String("status.php"))) {
                 const QJsonDocument json(QJsonObject{
@@ -1008,22 +1009,25 @@ private Q_SLOTS:
 
         QSignalSpy authFailedSpy(creds, &AbstractCredentials::authenticationFailed);
         QSignalSpy authStartedSpy(creds, &AbstractCredentials::authenticationStarted);
+        QSignalSpy logoutSpy(creds, &AbstractCredentials::requestLogout);
 
         QVERIFY(creds->refreshAccessToken());
 
-        // Wait for the first token request to complete (queued connections fire).
-        // TimeoutError → nextTry resets to 0, retry scheduled in 30s — no retry in this window.
-        QTRY_VERIFY_WITH_TIMEOUT(tokenRequestCount >= 1, 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(logoutSpy.count(), 1, 5000);
+        QCOMPARE(tokenRequestCount, 1);
         QCOMPARE(authStartedSpy.count(), 1);
-        // The fix: transient errors must NOT emit authenticationFailed
+        // authenticationFailed clears the job queue. This path must retain it.
         QCOMPARE(authFailedSpy.count(), 0);
+        QVERIFY(!creds->ready());
+        QVERIFY(account->credentialManager()->hasPendingOperation(QStringLiteral("http/oauthtoken")));
+        QVERIFY(!creds->refreshAccessToken());
+        QCOMPARE(tokenRequestCount, 1);
     }
 
-    void testTerminalRefreshEmitsAuthFailed()
+    void testRejectedRefreshRequiresFreshSignIn()
     {
         QObject replyParent;
         int tokenRequestCount = 0;
-        HttpCredentials::TokenRefreshDefaultTimeoutOneError = 0s;
 
         auto override = [&replyParent, &tokenRequestCount](QNetworkAccessManager::Operation op, const QNetworkRequest &req, QIODevice *) -> QNetworkReply * {
             if (req.url().path().endsWith(QLatin1String("status.php"))) {
@@ -1071,14 +1075,16 @@ private Q_SLOTS:
 
         QSignalSpy authFailedSpy(creds, &AbstractCredentials::authenticationFailed);
         QSignalSpy fetchedSpy(creds, &AbstractCredentials::fetched);
+        QSignalSpy logoutSpy(creds, &AbstractCredentials::requestLogout);
 
         QVERIFY(creds->refreshAccessToken());
 
-        // ContentNotFoundError → timeout=0s, nextTry increments each time.
-        // After TokenRefreshMaxRetries (3) errors, terminal branch emits authenticationFailed.
-        QTRY_VERIFY_WITH_TIMEOUT(authFailedSpy.count() == 1, 1s);
+        QTRY_COMPARE_WITH_TIMEOUT(logoutSpy.count(), 1, 5000);
+        QCOMPARE(authFailedSpy.count(), 0);
         QCOMPARE(fetchedSpy.count(), 1);
-        QVERIFY(tokenRequestCount >= 3);
+        QCOMPARE(tokenRequestCount, 1);
+        QVERIFY(!creds->ready());
+        QVERIFY(!creds->refreshAccessToken());
     }
 };
 

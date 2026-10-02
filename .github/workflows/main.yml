@@ -1,4 +1,4 @@
-name: OpenCloud Desktop CI
+name: Atum Drive Companion CI
 
 on:
   push:
@@ -17,9 +17,6 @@ on:
         options:
           - stable
           - beta
-  schedule:
-    - cron: '11 3 * * 1-5'
-      timezone: "Europe/Berlin"
 
 concurrency: 
   group: ${{ github.head_ref || github.run_id }}
@@ -82,7 +79,10 @@ jobs:
             - target: linux-gcc-x86_64
               os: ubuntu-latest
               clang_tidy: true
-              container: invent-registry.kde.org/sysadmin/ci-images/craft-appimage-alma9:latest
+              container:
+                image: invent-registry.kde.org/sysadmin/ci-images/craft-appimage-alma9:latest
+                # GNOME Secret Service needs memory locking for real custody tests.
+                options: --cap-add=IPC_LOCK
 
     name: ${{ matrix.target }}
 
@@ -127,6 +127,12 @@ jobs:
           ~/ccache
         key: ${{ runner.os }}-${{ matrix.target }}-${{ github.run_id }} # generate a new key every time to trigger an update
         restore-keys: ${{ runner.os }}-${{ matrix.target }}
+
+    - name: Linux credential service preflight
+      if: matrix.target == 'linux-gcc-x86_64'
+      run: |
+        dnf install -y dbus-daemon gnome-keyring libsecret
+        dbus-run-session -- bash "${env:GITHUB_WORKSPACE}/.github/workflows/with-test-keyring.sh" /usr/bin/true
 
     - name: Restore cache
       if: github.event_name == 'pull_request'
@@ -175,7 +181,7 @@ jobs:
         } elseif($IsLinux) {
             & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c dev-utils/linuxdeploy
             # ensure we have fuse3-devel installed
-            dnf install -y fuse3-devel file
+            dnf install -y fuse3-devel file dbus-daemon gnome-keyring libsecret
         } elseif($IsMacOS -and ${env:SIGN_PACKAGE} -ieq "true") {
             brew install packages
         }
@@ -223,7 +229,11 @@ jobs:
 
     - name: Run tests
       run: |
-        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache --test opencloud/opencloud-desktop
+        if ($IsLinux) {
+            dbus-run-session -- bash "${env:GITHUB_WORKSPACE}/.github/workflows/with-test-keyring.sh" pwsh -File "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache --test opencloud/opencloud-desktop
+        } else {
+            & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache --test opencloud/opencloud-desktop
+        }
 
     - name: Clang tidy
       if: ${{ matrix.clang_tidy }}
