@@ -79,7 +79,10 @@ jobs:
             - target: linux-gcc-x86_64
               os: ubuntu-latest
               clang_tidy: true
-              container: invent-registry.kde.org/sysadmin/ci-images/craft-appimage-alma9:latest
+              container:
+                image: invent-registry.kde.org/sysadmin/ci-images/craft-appimage-alma9:latest
+                # GNOME Secret Service needs memory locking for real custody tests.
+                options: --cap-add=IPC_LOCK
 
     name: ${{ matrix.target }}
 

@@ -24,16 +24,12 @@ export XDG_CONFIG_HOME="$keyring_fixture_dir/config"
 export XDG_RUNTIME_DIR="$keyring_fixture_dir/runtime"
 mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR"
 keyring_fixture_daemon=$(command -v gnome-keyring-daemon)
-# Alma's executable may carry CAP_IPC_LOCK outside the hosted container's
-# capability bounding set, causing execve to fail before the daemon starts.
-# Preserve diagnostic evidence, then copy only this synthetic fixture's daemon
-# without file capabilities. Do not grant the container extra privileges or
-# alter the installed daemon or the application's secure-store behavior.
+# Preserve evidence of the packaged daemon's memory-lock requirement. The Linux
+# job grants only IPC_LOCK so this real daemon can execute and drop capabilities.
 if command -v getcap >/dev/null; then
     getcap "$keyring_fixture_daemon"
 fi
-install -m 0755 "$keyring_fixture_daemon" "$keyring_fixture_dir/gnome-keyring-daemon"
-printf %s 'disposable-ci-keyring-password' | "$keyring_fixture_dir/gnome-keyring-daemon" --foreground --unlock --components=secrets --control-directory="$XDG_RUNTIME_DIR" >"$keyring_fixture_dir/daemon.log" 2>&1 &
+printf %s 'disposable-ci-keyring-password' | "$keyring_fixture_daemon" --foreground --unlock --components=secrets --control-directory="$XDG_RUNTIME_DIR" >"$keyring_fixture_dir/daemon.log" 2>&1 &
 keyring_fixture_pid=$!
 timeout 15 gdbus wait --session org.freedesktop.secrets
 printf %s 'synthetic-secret-service-probe' | timeout 15 secret-tool store --label='Atum CI probe' atum-ci probe

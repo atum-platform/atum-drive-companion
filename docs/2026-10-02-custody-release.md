@@ -190,3 +190,16 @@ system daemon and container permissions are unchanged. The copy handles only
 generated synthetic credentials and is removed by the fixture's existing trap.
 `bash -n` and `git diff --check` pass locally. The next exact-head hosted run must
 confirm the diagnosis and execute the real custody tests before merge.
+
+Run 37007005533 confirmed `/usr/bin/gnome-keyring-daemon cap_ipc_lock=ep`.
+The private copy executed, but GNOME 40.0 then aborted while dropping capabilities
+with `error dropping process capabilities - -5`. Its
+[upstream implementation](https://github.com/GNOME/gnome-keyring/blob/40.0/daemon/gkd-capability.c)
+requires IPC_LOCK even in this root container path. The copy approach is removed:
+the Linux job container now has only the additional `--cap-add=IPC_LOCK`, and
+runs the original packaged daemon. No privileged mode, host mount, action
+allowlist change, product credential fallback or skip is introduced. The private
+synthetic keyring, preflight write/read/delete and cleanup remain required.
+The Linux container declaration uses the supported image/options form from
+[GitHub workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idcontaineroptions).
+The superseding exact-head run must pass preflight and real tests before merge.
