@@ -11,6 +11,9 @@ using namespace OCC;
 
 QUrl GlobalConfig::serverUrl()
 {
+    if (const auto identity = Theme::instance()->oauthIdentityProfile()) {
+        return identity->driveOrigin;
+    }
     return getValue("Wizard/ServerUrl").toUrl();
 }
 

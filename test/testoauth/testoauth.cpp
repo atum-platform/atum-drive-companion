@@ -8,6 +8,7 @@
 #include <QDesktopServices>
 
 #include "common/asserts.h"
+#include "gui/newwizard/jobs/resolveurljobfactory.h"
 #include "libsync/creds/credentialmanager.h"
 #include "libsync/creds/httpcredentials.h"
 #include "libsync/creds/oauth.h"
@@ -360,6 +361,298 @@ class TestOAuth : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void testPinnedServerResolution_data()
+    {
+        QTest::addColumn<QString>("mutation");
+        for (const auto &name : {"accepted", "server", "redirect", "foreign-response", "tls-error"}) {
+            QTest::newRow(name) << QString::fromLatin1(name);
+        }
+    }
+
+    void testPinnedServerResolution()
+    {
+        class ResolverReply : public FakePayloadReply
+        {
+        public:
+            using FakePayloadReply::FakePayloadReply;
+            using QNetworkReply::setError;
+            using QNetworkReply::setUrl;
+        };
+        QFETCH(QString, mutation);
+        const OAuthIdentityProfile identity{QUrl(QStringLiteral("https://drive.atum.test")), QStringLiteral("https://auth.atum.test/"),
+            QStringLiteral("01JDRVCMPNXQ7R8S9T0V2W3X4Y"), QStringLiteral("openid")};
+        FakeAM manager({}, nullptr);
+        int requests = 0;
+        bool pinned = true;
+        manager.setOverride([&](QNetworkAccessManager::Operation op, const QNetworkRequest &request, QIODevice *) -> QNetworkReply * {
+            ++requests;
+            pinned = pinned && request.url() == QUrl(QStringLiteral("https://drive.atum.test/status.php"))
+                && request.attribute(QNetworkRequest::RedirectPolicyAttribute) == QNetworkRequest::ManualRedirectPolicy;
+            auto *reply = new ResolverReply(op, request, QByteArrayLiteral("{}"), {}, &manager);
+            if (mutation == QStringLiteral("redirect"))
+                reply->setAttribute(QNetworkRequest::HttpStatusCodeAttribute, 302);
+            if (mutation == QStringLiteral("foreign-response"))
+                reply->setUrl(QUrl(QStringLiteral("https://foreign.atum.test/status.php")));
+            if (mutation == QStringLiteral("tls-error")) {
+                reply->setError(QNetworkReply::SslHandshakeFailedError, QStringLiteral("synthetic TLS failure"));
+                QTimer::singleShot(10ms, reply, [reply] {
+                    Q_EMIT reply->sslErrors({QSslError(QSslError::SelfSignedCertificate)});
+                    reply->checkedFinished();
+                });
+            }
+            return reply;
+        });
+        auto *job = Wizard::Jobs::ResolveUrlJobFactory(&manager, identity)
+                        .startJob(mutation == QStringLiteral("server") ? QUrl(QStringLiteral("https://foreign.atum.test")) : identity.driveOrigin, this);
+        QSignalSpy done(job, &CoreJob::finished);
+        QSignalSpy acceptedCa(job, &CoreJob::caCertificateAccepted);
+        bool succeeded = false;
+        QUrl resolved;
+        connect(job, &CoreJob::finished, this, [job, &succeeded, &resolved] {
+            succeeded = job->success();
+            resolved = job->result().toUrl();
+        });
+        QTRY_COMPARE(done.count(), 1);
+        QCOMPARE(succeeded, mutation == QStringLiteral("accepted"));
+        QCOMPARE(requests, mutation == QStringLiteral("server") ? 0 : 1);
+        QCOMPARE(acceptedCa.count(), 0);
+        if (succeeded)
+            QCOMPARE(resolved, identity.driveOrigin);
+        QVERIFY(pinned);
+    }
+
+    void testPinnedIdentity_data()
+    {
+        QTest::addColumn<QString>("mutation");
+        QTest::addColumn<bool>("preGrant");
+        QTest::newRow("accepted") << QString() << false;
+        for (const auto &name : {"server", "subject", "issuer", "client", "missing-scopes", "wide-scopes", "discovery-issuer", "foreign-auth", "foreign-token",
+                 "foreign-userinfo", "http-token", "discovery-redirect"}) {
+            QTest::newRow(name) << QString::fromLatin1(name) << true;
+        }
+        for (const auto &name :
+            {"token-issuer", "token-subject", "token-scope", "token-empty-refresh", "token-redirect", "userinfo-subject", "userinfo-redirect"}) {
+            QTest::newRow(name) << QString::fromLatin1(name) << false;
+        }
+    }
+
+    void testPinnedIdentity()
+    {
+        QFETCH(QString, mutation);
+        QFETCH(bool, preGrant);
+        const OAuthIdentityProfile identity{QUrl(QStringLiteral("https://drive.atum.test")), QStringLiteral("https://auth.atum.test/"),
+            QStringLiteral("01JDRVCMPNXQ7R8S9T0V2W3X4Y"), QStringLiteral("openid")};
+        const QString subject = QStringLiteral("01JDRVTSTAXQ7R8S9T0V2W3X4Y");
+        FakeAM manager({}, nullptr);
+        int tokenRequests = 0;
+        int userInfoRequests = 0;
+        int unexpectedRequests = 0;
+        bool privateRequestsPinned = true;
+        manager.setOverride([&](QNetworkAccessManager::Operation op, const QNetworkRequest &request, QIODevice *body) -> QNetworkReply * {
+            QJsonObject payload;
+            QHttpHeaders headers;
+            headers.append(QHttpHeaders::WellKnownHeader::ContentType, QStringLiteral("application/json"));
+            if (request.url().path().endsWith(QLatin1String("/.well-known/webfinger"))) {
+                payload = {{QStringLiteral("subject"),
+                               mutation == QStringLiteral("subject") ? QStringLiteral("https://foreign.atum.test") : identity.driveOrigin.toString()},
+                    {QStringLiteral("links"),
+                        QJsonArray{QJsonObject{{QStringLiteral("rel"), QStringLiteral("http://openid.net/specs/connect/1.0/issuer")},
+                            {QStringLiteral("href"), mutation == QStringLiteral("issuer") ? QStringLiteral("https://foreign.atum.test/") : identity.issuer}}}},
+                    {QStringLiteral("properties"),
+                        QJsonObject{{QStringLiteral("http://opencloud.eu/ns/oidc/client_id"),
+                                        mutation == QStringLiteral("client") ? QStringLiteral("other") : identity.clientId},
+                            {QStringLiteral("http://opencloud.eu/ns/oidc/scopes"),
+                                mutation == QStringLiteral("missing-scopes")    ? QJsonArray{}
+                                    : mutation == QStringLiteral("wide-scopes") ? QJsonArray{QStringLiteral("openid"), QStringLiteral("email")}
+                                                                                : QJsonArray{QStringLiteral("openid")}}}}};
+            } else if (request.url().path().endsWith(QLatin1String("/.well-known/openid-configuration"))) {
+                payload = {
+                    {QStringLiteral("issuer"), mutation == QStringLiteral("discovery-issuer") ? QStringLiteral("https://foreign.atum.test/") : identity.issuer},
+                    {QStringLiteral("authorization_endpoint"),
+                        mutation == QStringLiteral("foreign-auth") ? QStringLiteral("https://foreign.atum.test/authorize")
+                                                                   : identity.issuer + QStringLiteral("authorize")},
+                    {QStringLiteral("token_endpoint"),
+                        mutation == QStringLiteral("foreign-token")    ? QStringLiteral("https://foreign.atum.test/token")
+                            : mutation == QStringLiteral("http-token") ? QStringLiteral("http://auth.atum.test/token")
+                                                                       : identity.issuer + QStringLiteral("token")},
+                    {QStringLiteral("userinfo_endpoint"),
+                        mutation == QStringLiteral("foreign-userinfo") ? QStringLiteral("https://foreign.atum.test/userinfo")
+                                                                       : identity.issuer + QStringLiteral("userinfo")},
+                    {QStringLiteral("registration_endpoint"), QString(identity.issuer + QStringLiteral("registration"))}};
+            } else if (request.url().path() == QStringLiteral("/token")) {
+                ++tokenRequests;
+                const QUrlQuery posted(QString::fromUtf8(body->readAll()));
+                privateRequestsPinned = privateRequestsPinned && op == QNetworkAccessManager::PostOperation
+                    && posted.queryItemValue(QStringLiteral("client_id")) == identity.clientId
+                    && posted.queryItemValue(QStringLiteral("scope")) == identity.scopes
+                    && request.attribute(QNetworkRequest::RedirectPolicyAttribute) == QNetworkRequest::ManualRedirectPolicy;
+                const QJsonObject claims{
+                    {QStringLiteral("iss"), mutation == QStringLiteral("token-issuer") ? QStringLiteral("https://foreign.atum.test/") : identity.issuer},
+                    {QStringLiteral("sub"), mutation == QStringLiteral("token-subject") ? QStringLiteral("not-a-mas-ulid") : subject},
+                    {QStringLiteral("aud"), QJsonArray{identity.clientId}}};
+                const auto encoded =
+                    QJsonDocument(claims).toJson(QJsonDocument::Compact).toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
+                payload = {{QStringLiteral("access_token"), QStringLiteral("synthetic-access")},
+                    {QStringLiteral("refresh_token"), QStringLiteral("synthetic-refresh")}, {QStringLiteral("token_type"), QStringLiteral("Bearer")},
+                    {QStringLiteral("id_token"), QString::fromLatin1("eyJhbGciOiJSUzI1NiJ9." + encoded + ".c2ln")},
+                    {QStringLiteral("scope"), mutation == QStringLiteral("token-scope") ? QStringLiteral("openid email") : identity.scopes}};
+                if (mutation == QStringLiteral("token-empty-refresh"))
+                    payload.insert(QStringLiteral("refresh_token"), QString());
+            } else if (request.url().path() == QStringLiteral("/userinfo")) {
+                ++userInfoRequests;
+                privateRequestsPinned = privateRequestsPinned && request.rawHeader("Authorization") == QByteArrayLiteral("Bearer synthetic-access")
+                    && request.attribute(QNetworkRequest::RedirectPolicyAttribute) == QNetworkRequest::ManualRedirectPolicy;
+                payload = {{QStringLiteral("sub"), mutation == QStringLiteral("userinfo-subject") ? QStringLiteral("01JDRVOTHERXQ7R8S9T0V2W3X4Y") : subject}};
+            } else {
+                ++unexpectedRequests;
+            }
+            auto *reply = new FakePayloadReply(op, request, QJsonDocument(payload).toJson(), headers, &manager);
+            if ((mutation == QStringLiteral("discovery-redirect") && request.url().path().endsWith(QLatin1String("openid-configuration")))
+                || (mutation == QStringLiteral("token-redirect") && request.url().path() == QStringLiteral("/token"))
+                || (mutation == QStringLiteral("userinfo-redirect") && request.url().path() == QStringLiteral("/userinfo"))) {
+                reply->setAttribute(QNetworkRequest::HttpStatusCodeAttribute, 302);
+                reply->setAttribute(QNetworkRequest::RedirectionTargetAttribute, QUrl(QStringLiteral("https://foreign.atum.test")));
+            }
+            return reply;
+        });
+        OAuth oauth(
+            mutation == QStringLiteral("server") ? QUrl(QStringLiteral("https://foreign.atum.test")) : identity.driveOrigin, &manager, {}, nullptr, identity);
+        QSignalSpy grant(&oauth, &OAuth::authorisationLinkChanged);
+        QSignalSpy result(&oauth, &OAuth::result);
+        oauth.startAuthentication();
+        if (preGrant) {
+            QTRY_COMPARE(result.count(), 1);
+            QCOMPARE(grant.count(), 0);
+            QCOMPARE(tokenRequests, 0);
+        } else {
+            QTRY_COMPARE(grant.count(), 1);
+            const QUrlQuery authorization(oauth.authorisationLink());
+            QCOMPARE(authorization.queryItemValue(QStringLiteral("scope")), identity.scopes);
+            QUrl loopback(authorization.queryItemValue(QStringLiteral("redirect_uri")));
+            QCOMPARE(loopback.host(), QStringLiteral("127.0.0.1"));
+            loopback.setQuery(QUrlQuery{
+                {QStringLiteral("code"), QStringLiteral("synthetic-code")}, {QStringLiteral("state"), authorization.queryItemValue(QStringLiteral("state"))}});
+            QNetworkAccessManager browser;
+            auto *response = browser.get(QNetworkRequest(loopback));
+            QSignalSpy browserFinished(response, &QNetworkReply::finished);
+            QTRY_COMPARE(result.count(), 1);
+            QTRY_COMPARE(browserFinished.count(), 1);
+            QCOMPARE(tokenRequests, 1);
+            QCOMPARE(userInfoRequests, mutation.startsWith(QStringLiteral("token-")) ? 0 : 1);
+        }
+        QCOMPARE(result.at(0).at(0).value<OAuth::Result>(), mutation.isEmpty() ? OAuth::LoggedIn : OAuth::Error);
+        if (!mutation.isEmpty())
+            QVERIFY(result.at(0).at(1).toString().isEmpty());
+        QCOMPARE(unexpectedRequests, 0); // Registration and foreign endpoint calls never happen.
+        QVERIFY(privateRequestsPinned);
+    }
+
+    void testPinnedRefresh_data()
+    {
+        QTest::addColumn<QString>("mutation");
+        QTest::newRow("accepted-without-new-id-token") << QString();
+        for (const auto &name : {"scope", "missing-refresh", "same-refresh", "subject", "new-id-issuer", "new-id-subject", "token-redirect",
+                 "userinfo-redirect", "discovery-client"}) {
+            QTest::newRow(name) << QString::fromLatin1(name);
+        }
+    }
+
+    void testPinnedRefresh()
+    {
+        QFETCH(QString, mutation);
+        const OAuthIdentityProfile identity{QUrl(QStringLiteral("https://drive.atum.test")), QStringLiteral("https://auth.atum.test/"),
+            QStringLiteral("01JDRVCMPNXQ7R8S9T0V2W3X4Y"), QStringLiteral("openid")};
+        const QString subject = QStringLiteral("01JDRVTSTAXQ7R8S9T0V2W3X4Y");
+        const QJsonObject enrolled{
+            {QStringLiteral("sub"), subject}, {QStringLiteral("iss"), identity.issuer}, {QStringLiteral("aud"), QJsonArray{identity.clientId}}};
+        auto account = Account::create(QUuid::createUuid());
+        account->setUrl(identity.driveOrigin);
+        auto *manager = new FakeAM({}, nullptr);
+        account->setCredentials(new FakeCredentials{manager});
+        int tokens = 0;
+        int userInfos = 0;
+        bool requestsValid = true;
+        manager->setOverride([&](QNetworkAccessManager::Operation op, const QNetworkRequest &request, QIODevice *body) -> QNetworkReply * {
+            QJsonObject payload;
+            QHttpHeaders headers;
+            headers.append(QHttpHeaders::WellKnownHeader::ContentType, QStringLiteral("application/json"));
+            if (request.url().path().endsWith(QLatin1String("status.php"))) {
+                payload = {{QStringLiteral("installed"), true}, {QStringLiteral("maintenance"), false}, {QStringLiteral("version"), QStringLiteral("10.0.0")}};
+            } else if (request.url().path().endsWith(QLatin1String("webfinger"))) {
+                payload = {{QStringLiteral("subject"), identity.driveOrigin.toString()},
+                    {QStringLiteral("links"),
+                        QJsonArray{QJsonObject{
+                            {QStringLiteral("rel"), QStringLiteral("http://openid.net/specs/connect/1.0/issuer")}, {QStringLiteral("href"), identity.issuer}}}},
+                    {QStringLiteral("properties"),
+                        QJsonObject{{QStringLiteral("http://opencloud.eu/ns/oidc/client_id"),
+                                        mutation == QStringLiteral("discovery-client") ? QStringLiteral("foreign") : identity.clientId},
+                            {QStringLiteral("http://opencloud.eu/ns/oidc/scopes"), QJsonArray{QStringLiteral("openid")}}}}};
+            } else if (request.url().path().endsWith(QLatin1String("openid-configuration"))) {
+                payload = {{QStringLiteral("issuer"), identity.issuer},
+                    {QStringLiteral("authorization_endpoint"), QString(identity.issuer + QStringLiteral("authorize"))},
+                    {QStringLiteral("token_endpoint"), QString(identity.issuer + QStringLiteral("token"))},
+                    {QStringLiteral("userinfo_endpoint"), QString(identity.issuer + QStringLiteral("userinfo"))},
+                    {QStringLiteral("registration_endpoint"), QString(identity.issuer + QStringLiteral("registration"))}};
+            } else if (request.url().path() == QStringLiteral("/token")) {
+                ++tokens;
+                const QUrlQuery posted(QString::fromUtf8(body->readAll()));
+                requestsValid = requestsValid && posted.queryItemValue(QStringLiteral("grant_type")) == QStringLiteral("refresh_token")
+                    && posted.queryItemValue(QStringLiteral("refresh_token")) == QStringLiteral("synthetic-old-refresh")
+                    && posted.queryItemValue(QStringLiteral("client_id")) == identity.clientId
+                    && posted.queryItemValue(QStringLiteral("scope")) == identity.scopes
+                    && request.attribute(QNetworkRequest::RedirectPolicyAttribute) == QNetworkRequest::ManualRedirectPolicy;
+                payload = {{QStringLiteral("access_token"), QStringLiteral("synthetic-new-access")}, {QStringLiteral("token_type"), QStringLiteral("Bearer")},
+                    {QStringLiteral("scope"), mutation == QStringLiteral("scope") ? QStringLiteral("openid email") : identity.scopes}};
+                if (mutation != QStringLiteral("missing-refresh")) {
+                    payload.insert(QStringLiteral("refresh_token"),
+                        mutation == QStringLiteral("same-refresh") ? QStringLiteral("synthetic-old-refresh") : QStringLiteral("synthetic-new-refresh"));
+                }
+                if (mutation.startsWith(QStringLiteral("new-id-"))) {
+                    auto claims = enrolled;
+                    claims.insert(mutation == QStringLiteral("new-id-issuer") ? QStringLiteral("iss") : QStringLiteral("sub"),
+                        mutation == QStringLiteral("new-id-issuer") ? QStringLiteral("https://foreign.atum.test/")
+                                                                    : QStringLiteral("01JDRVOTHERXQ7R8S9T0V2W3X4Y"));
+                    payload.insert(QStringLiteral("id_token"),
+                        QString::fromLatin1("eyJhbGciOiJSUzI1NiJ9."
+                            + QJsonDocument(claims).toJson(QJsonDocument::Compact).toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals)
+                            + ".c2ln"));
+                }
+            } else if (request.url().path() == QStringLiteral("/userinfo")) {
+                ++userInfos;
+                requestsValid = requestsValid && request.rawHeader("Authorization") == QByteArrayLiteral("Bearer synthetic-new-access")
+                    && request.attribute(QNetworkRequest::RedirectPolicyAttribute) == QNetworkRequest::ManualRedirectPolicy;
+                payload = {{QStringLiteral("sub"), mutation == QStringLiteral("subject") ? QStringLiteral("01JDRVOTHERXQ7R8S9T0V2W3X4Y") : subject}};
+            } else {
+                requestsValid = false;
+            }
+            auto *reply = new FakePayloadReply(op, request, QJsonDocument(payload).toJson(), headers, manager);
+            if ((mutation == QStringLiteral("token-redirect") && request.url().path() == QStringLiteral("/token"))
+                || (mutation == QStringLiteral("userinfo-redirect") && request.url().path() == QStringLiteral("/userinfo"))) {
+                reply->setAttribute(QNetworkRequest::HttpStatusCodeAttribute, 302);
+            }
+            return reply;
+        });
+        AccountBasedOAuth oauth(account, nullptr, identity);
+        oauth.setIdToken(IdToken(enrolled));
+        QSignalSpy finished(&oauth, &AccountBasedOAuth::refreshFinished);
+        QSignalSpy failed(&oauth, &OAuth::refreshError);
+        QSignalSpy initialResult(&oauth, &OAuth::result);
+        QSignalSpy browserGrant(&oauth, &OAuth::authorisationLinkChanged);
+        oauth.refreshAuthentication(QStringLiteral("synthetic-old-refresh"));
+        QTRY_COMPARE(finished.count() + failed.count(), 1);
+        QCOMPARE(finished.count(), mutation.isEmpty() ? 1 : 0);
+        QCOMPARE(failed.count(), mutation.isEmpty() ? 0 : 1);
+        QCOMPARE(initialResult.count(), 0);
+        QCOMPARE(browserGrant.count(), 0);
+        QCOMPARE(tokens, mutation == QStringLiteral("discovery-client") ? 0 : 1);
+        if (mutation.isEmpty()) {
+            QCOMPARE(userInfos, 1);
+            QCOMPARE(finished.at(0).at(0).toString(), QStringLiteral("synthetic-new-access"));
+            QCOMPARE(finished.at(0).at(1).toString(), QStringLiteral("synthetic-new-refresh"));
+        }
+        QVERIFY(requestsValid);
+    }
+
     void testBasic()
     {
         // Initial-auth success path: only result(LoggedIn) fires.

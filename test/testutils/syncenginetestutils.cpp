@@ -720,7 +720,7 @@ qint64 FakePayloadReply::readData(char *buf, qint64 max)
 
 qint64 FakePayloadReply::bytesAvailable() const
 {
-    return _body.size();
+    return _body.size() + QNetworkReply::bytesAvailable();
 }
 
 FakeErrorReply::FakeErrorReply(QNetworkAccessManager::Operation op, const QNetworkRequest &request, QObject *parent, int httpErrorCode, const QByteArray &body)

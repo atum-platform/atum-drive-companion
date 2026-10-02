@@ -17,11 +17,13 @@
 #include "libsync/creds/idtoken.h"
 #include "libsync/creds/jwt.h"
 #include "opencloudsynclib.h"
+#include "theme.h"
 
 #include <QNetworkReply>
 #include <QPointer>
 #include <QTcpServer>
 #include <QUrl>
+#include <functional>
 
 namespace OCC {
 class JsonJob;
@@ -63,7 +65,8 @@ public:
     Q_FLAG(PromptValuesSupported)
     Q_DECLARE_FLAGS(PromptValuesSupportedFlags, PromptValuesSupported)
 
-    OAuth(const QUrl &serverUrl, QNetworkAccessManager *networkAccessManager, const QVariantMap &dynamicRegistrationData, QObject *parent);
+    OAuth(const QUrl &serverUrl, QNetworkAccessManager *networkAccessManager, const QVariantMap &dynamicRegistrationData, QObject *parent,
+        std::optional<OAuthIdentityProfile> identity = std::nullopt);
     ~OAuth() override;
 
     void setIdToken(IdToken &&idToken);
@@ -125,6 +128,10 @@ protected:
 
     QNetworkReply *postTokenRequest(QUrlQuery &&queryItems);
 
+    bool identityProfileMatchesServer() const;
+    void verifyTokenIdentity(const QVariantMap &data, const IdToken &idToken, const QString &accessToken, std::function<void(bool)> completed);
+    const std::optional<OAuthIdentityProfile> _identity;
+
 
 private:
     void finalize(const QPointer<QTcpSocket> &socket, const QString &accessToken, const QString &refreshToken, const QUrl &messageUrl);
@@ -136,6 +143,7 @@ private:
 
     QUrl _authEndpoint;
     QUrl _tokenEndpoint;
+    QUrl _userInfoEndpoint;
     QByteArray _pkceCodeVerifier;
     QByteArray _state;
 
@@ -155,7 +163,7 @@ class OPENCLOUD_SYNC_EXPORT AccountBasedOAuth : public OAuth
     Q_OBJECT
 
 public:
-    explicit AccountBasedOAuth(AccountPtr account, QObject *parent = nullptr);
+    explicit AccountBasedOAuth(AccountPtr account, QObject *parent = nullptr, std::optional<OAuthIdentityProfile> identity = std::nullopt);
 
     void startAuthentication() override;
 

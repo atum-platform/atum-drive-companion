@@ -22,11 +22,21 @@
 #include <QFileInfo>
 #include <QObject>
 #include <QPalette>
+#include <optional>
 #include <qquickwindow.h>
 
 namespace OCC {
 
 class SyncResult;
+
+// Optional immutable OEM identity binding. Unbranded clients retain discovery.
+struct OAuthIdentityProfile
+{
+    QUrl driveOrigin;
+    QString issuer;
+    QString clientId;
+    QString scopes;
+};
 
 /**
  * @brief The Theme class
@@ -204,6 +214,8 @@ public:
      */
     virtual QString oauthClientId() const;
     virtual QString oauthClientSecret() const;
+
+    virtual std::optional<OAuthIdentityProfile> oauthIdentityProfile() const;
 
 
     /**

@@ -33,20 +33,37 @@ const char abortedBySslErrorHandlerC[] = "aborted-by-ssl-error-handler";
 
 namespace OCC::Wizard::Jobs {
 
-ResolveUrlJobFactory::ResolveUrlJobFactory(QNetworkAccessManager *nam)
+ResolveUrlJobFactory::ResolveUrlJobFactory(QNetworkAccessManager *nam, std::optional<OAuthIdentityProfile> identity)
     : AbstractCoreJobFactory(nam)
+    , _identity(Theme::instance()->oauthIdentityProfile() ? Theme::instance()->oauthIdentityProfile() : std::move(identity))
 {
 }
 
 CoreJob *ResolveUrlJobFactory::startJob(const QUrl &url, QObject *parent)
 {
+    if (_identity && url != _identity->driveOrigin) {
+        auto *job = new CoreJob(nullptr, parent);
+        QMetaObject::invokeMethod(
+            job, [job] { setJobError(job, QApplication::translate("ResolveUrlJobFactory", "Server does not match this Atum companion")); },
+            Qt::QueuedConnection);
+        return job;
+    }
     QNetworkRequest req(Utility::concatUrlPath(url, QStringLiteral("status.php")));
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, _identity ? QNetworkRequest::ManualRedirectPolicy : QNetworkRequest::NoLessSafeRedirectPolicy);
 
     auto *job = new CoreJob(nam()->get(req), parent);
 
-    auto makeFinishedHandler = [oldUrl = url, job](QNetworkReply *reply) {
-        return [oldUrl, reply, job] {
+    auto makeFinishedHandler = [oldUrl = url, job, identity = _identity](QNetworkReply *reply) {
+        return [oldUrl, reply, job, identity] {
+            if (identity) {
+                if (reply->error() != QNetworkReply::NoError || reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200
+                    || reply->url() != Utility::concatUrlPath(identity->driveOrigin, QStringLiteral("status.php"))) {
+                    setJobError(job, QApplication::translate("ResolveUrlJobFactory", "The pinned Atum server could not be verified"));
+                } else {
+                    setJobResult(job, identity->driveOrigin);
+                }
+                return;
+            }
             if (reply->error() != QNetworkReply::NoError) {
                 if (reply->property(abortedBySslErrorHandlerC).toBool()) {
                     return;
@@ -107,37 +124,41 @@ CoreJob *ResolveUrlJobFactory::startJob(const QUrl &url, QObject *parent)
 
     QObject::connect(job->reply(), &QNetworkReply::finished, job, makeFinishedHandler(job->reply()));
 
-    QObject::connect(job->reply(), &QNetworkReply::sslErrors, job, [req, job, makeFinishedHandler, nam = nam()](const QList<QSslError> &errors) mutable {
-        // the tls error dialog can only handle untrusted certificates not general ssl errors
-        auto filtered = errors;
-        filtered.erase(std::remove_if(filtered.begin(), filtered.end(), [](const QSslError &e) { return e.certificate().isNull(); }), filtered.end());
-        if (filtered.isEmpty()) {
-            QStringList sslErrorString;
-            for (const auto &error : errors) {
-                sslErrorString << error.errorString();
+    QObject::connect(job->reply(), &QNetworkReply::sslErrors, job,
+        [req, job, makeFinishedHandler, nam = nam(), identity = _identity](const QList<QSslError> &errors) mutable {
+            if (identity) {
+                return; // Qt's normal TLS failure reaches the pinned finished handler; no custom-CA exception.
             }
-            setJobError(job, QApplication::translate("ResolveUrlJobFactory", "SSL Error: %1").arg(sslErrorString.join(QLatin1Char('\n'))));
-        } else {
-            auto *tlsErrorDialog = new TlsErrorDialog(filtered, job->reply()->url().host(), ocApp()->settingsDialog());
-
-            job->reply()->setProperty(abortedBySslErrorHandlerC, true);
-            job->reply()->abort();
-
-            QObject::connect(tlsErrorDialog, &TlsErrorDialog::accepted, job, [job, req, filtered, nam, makeFinishedHandler]() mutable {
-                for (const auto &error : filtered) {
-                    Q_EMIT job->caCertificateAccepted(error.certificate());
+            // the tls error dialog can only handle untrusted certificates not general ssl errors
+            auto filtered = errors;
+            filtered.erase(std::remove_if(filtered.begin(), filtered.end(), [](const QSslError &e) { return e.certificate().isNull(); }), filtered.end());
+            if (filtered.isEmpty()) {
+                QStringList sslErrorString;
+                for (const auto &error : errors) {
+                    sslErrorString << error.errorString();
                 }
-                auto *reply = nam->get(req);
-                QObject::connect(reply, &QNetworkReply::finished, job, makeFinishedHandler(reply));
-            });
+                setJobError(job, QApplication::translate("ResolveUrlJobFactory", "SSL Error: %1").arg(sslErrorString.join(QLatin1Char('\n'))));
+            } else {
+                auto *tlsErrorDialog = new TlsErrorDialog(filtered, job->reply()->url().host(), ocApp()->settingsDialog());
 
-            QObject::connect(tlsErrorDialog, &TlsErrorDialog::rejected, job,
-                [job]() { setJobError(job, QApplication::translate("ResolveUrlJobFactory", "User rejected invalid SSL certificate")); });
+                job->reply()->setProperty(abortedBySslErrorHandlerC, true);
+                job->reply()->abort();
 
-            ocApp()->showSettings();
-            tlsErrorDialog->open();
-        }
-    });
+                QObject::connect(tlsErrorDialog, &TlsErrorDialog::accepted, job, [job, req, filtered, nam, makeFinishedHandler]() mutable {
+                    for (const auto &error : filtered) {
+                        Q_EMIT job->caCertificateAccepted(error.certificate());
+                    }
+                    auto *reply = nam->get(req);
+                    QObject::connect(reply, &QNetworkReply::finished, job, makeFinishedHandler(reply));
+                });
+
+                QObject::connect(tlsErrorDialog, &TlsErrorDialog::rejected, job,
+                    [job]() { setJobError(job, QApplication::translate("ResolveUrlJobFactory", "User rejected invalid SSL certificate")); });
+
+                ocApp()->showSettings();
+                tlsErrorDialog->open();
+            }
+        });
 
     return job;
 }

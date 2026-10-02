@@ -186,7 +186,9 @@ QString Theme::gitSHA1(VersionFormat format) const
     if (!aboutShowCopyright()) {
         return gitShahSort;
     }
-    const auto gitUrl = QStringLiteral("https://github.com/opencloud-eu/desktop/commit/%1").arg(Version::gitSha());
+    const auto gitUrl = (oauthIdentityProfile() ? QStringLiteral("https://github.com/atum-platform/atum-drive-companion/commit/%1")
+                                                : QStringLiteral("https://github.com/opencloud-eu/desktop/commit/%1"))
+                            .arg(Version::gitSha());
     switch (format) {
     case Theme::VersionFormat::OneLiner:
         Q_FALLTHROUGH();
@@ -195,7 +197,7 @@ QString Theme::gitSHA1(VersionFormat format) const
     case Theme::VersionFormat::Url:
         return gitUrl;
     case Theme::VersionFormat::RichText:
-        return QStringLiteral("<a href=\"%1\">%3</a>").arg(gitUrl, gitShahSort);
+        return QStringLiteral("<a href=\"%1\">%2</a>").arg(gitUrl, gitShahSort);
     }
     return QString();
 }
@@ -326,6 +328,11 @@ QString Theme::oauthClientId() const
 QString Theme::oauthClientSecret() const
 {
     return QString();
+}
+
+std::optional<OAuthIdentityProfile> Theme::oauthIdentityProfile() const
+{
+    return std::nullopt;
 }
 
 QPair<QString, QString> Theme::oauthOverrideAuthUrl() const
