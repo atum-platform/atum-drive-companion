@@ -11,11 +11,12 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSignalSpy>
+#include <future>
 
 using namespace OCC;
 using namespace Qt::Literals::StringLiterals;
 
-// Graph is the only stub: Folder, journal, owner locks, settings, VFS-off and removal are real.
+// Credentials/remote HTTP are synthetic; Folder, journal, locks, settings, VFS-off and removal are real.
 class RootGraphManager : public OCC::AccessManager
 {
 public:
@@ -149,7 +150,9 @@ private Q_SLOTS:
         QVERIFY(root.isValid());
         account(root.path());
         auto *man = TestUtils::folderMan();
-        auto *folder = man->addFolder(_state, definition(root.path()));
+        auto def = definition(root.path());
+        def.virtualFilesMode = Vfs::Mode::WindowsCfApi; // Forced Off must choose the plugin from the effective definition.
+        auto *folder = man->addFolder(_state, def);
         QVERIFY(folder);
         QVERIFY(!folder->hasSetupError());
         folder->journalDb()->setSelectiveSyncList(SyncJournalDb::SelectiveSyncWhiteList, {u"pending-upload/"_s});
@@ -247,10 +250,12 @@ private Q_SLOTS:
         QVERIFY(QMetaObject::invokeMethod(_state.get(), "slotConnectionValidatorResult", Qt::DirectConnection,
             Q_ARG(ConnectionValidator::Status, ConnectionValidator::Connected), Q_ARG(QStringList, QStringList{})));
         QTRY_VERIFY_WITH_TIMEOUT(folder->canSync(), 3000);
+        const auto rootCheck = folder->syncEngine().syncOptions()._localRootValid;
         _drives->append(drive(u"second-personal"_s));
         refreshGraph();
         QVERIFY(!folder->canSync());
         QCOMPARE(folder->syncState(), SyncResult::Paused);
+        QVERIFY(std::async(std::launch::async, rootCheck).get()); // Worker guard reads files only; GUI readiness already stopped sync.
         *_drives = {drive(u"personal-root"_s)};
         refreshGraph();
         QTRY_VERIFY_WITH_TIMEOUT(folder->canSync(), 3000);
@@ -271,6 +276,8 @@ private Q_SLOTS:
         settings.endArray();
         settings.sync();
         QCOMPARE(TestUtils::folderMan()->loadFolders().value(), 0);
+        QVERIFY(!TestUtils::folderMan()->addFolder(_state, definition(root.path())));
+        QCOMPARE(savedCount(), 1);
         QTemporaryDir healthy;
         _state->account()->setDefaultSyncRoot(healthy.path());
         auto *folder = TestUtils::folderMan()->addFolder(_state, definition(healthy.path()));
@@ -297,12 +304,14 @@ private Q_SLOTS:
         *_drives = {drive(u"personal-root"_s)};
         refreshGraph();
         QTRY_VERIFY_WITH_TIMEOUT(folder->canSync(), 3000);
+        const auto rootCheck = folder->syncEngine().syncOptions()._localRootValid;
         folder->journalDb()->setSelectiveSyncList(SyncJournalDb::SelectiveSyncWhiteList, {u"pending/"_s});
         folder->journalDb()->commit(u"before physical root replacement"_s);
         QVERIFY(TestUtils::writeRandomFile(QDir(root).filePath(u"pending.txt"_s), 128));
         QVERIFY(QDir().rename(root, offline));
         QVERIFY(QDir().mkpath(root));
         QVERIFY(!folder->canSync());
+        QVERIFY(!std::async(std::launch::async, rootCheck).get());
         QSignalSpy finished(&folder->syncEngine(), &SyncEngine::finished);
         folder->startSync();
         QCOMPARE(finished.size(), 0);

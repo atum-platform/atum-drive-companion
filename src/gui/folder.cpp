@@ -290,7 +290,14 @@ SyncOptions Folder::loadSyncOptions()
     // account is currently a shared ptr and thus the lifetime of the account object is guaranteed
     opt._parallelNetworkJobs = [account = _accountState->account()] { return account->isHttp2Supported() ? 20 : 6; };
     if (_atumRoot) {
-        opt._localRootValid = [this] { return canSync(); };
+        // Propagation may run off the GUI thread. Capture only immutable identity
+        // and file ownership; account/Graph readiness stays on the GUI watcher.
+        // The engine is destroyed before the owner in Folder::~Folder().
+        const auto account = _accountState->account();
+        const AtumRootIdentity identity{account->url().toString(), account->atumIssuer(), account->atumSubject(), _definition.spaceId()};
+        opt._localRootValid = [owner = _atumRoot.get(), identity, journal = _definition.absoluteJournalPath()] {
+            return owner->matches(identity) && QFileInfo::exists(journal);
+        };
     }
 
     return opt;

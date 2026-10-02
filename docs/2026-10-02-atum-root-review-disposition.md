@@ -5,6 +5,30 @@ Its full result is retained in `2026-10-02-atum-root-source-review.md`, read,
 acknowledged and its route closed. One targeted follow-up is reserved after
 local assembly and verification; disagreement alone does not trigger a fallback.
 
+The one targeted follow-up job `4f5749a0-6394-46fb-87bd-bc0f6fe68fd0` returned
+SHIP for source candidate 2e225d9 at 14:34Z. Its full result is retained in
+2026-10-02-atum-root-followup-review.md, read and acknowledged; route
+2aee92ca-1b40-4a63-a1af-1273e679b7ca is closed. It confirmed all primary P0s
+resolved and kept live/release/G8 gates open. No further review is requested.
+
+The coordinator verified and fixed its three small advisories. Preserved orphan
+definitions now participate in equal/parent/child overlap refusal. VFS creation
+uses the forced effective Off definition. Per-item propagation no longer reads
+mutable GUI AccountState/Graph pointers: the callback captures immutable identity,
+journal path and the file owner, whose lifetime exceeds the engine's. Graph count,
+sign-out and general readiness remain GUI start/watcher gates. Threaded native
+assertions distinguish physical root validity from GUI space readiness and refuse
+a replaced root. The existing enrollment test starts with a WindowsCfApi request
+and proves the effective Off plugin succeeds. Final advisory build passed; at
+14:42Z RootFolder (8) and RootBinding (17) passed without failures/errors/skips.
+Generic FolderMan fixtures intentionally lack verified Atum identity, so running
+them under the pinned theme refused two enrollments. The correct unbranded
+FolderMan rerun (5) passed. Together with the previous focused engine, OAuth,
+exclusion and real custody receipts, the applicable source checks remain 120
+passing Qt cases. Receipt hashes and exact source bytes are retained separately.
+The coordinator accepts the narrow source checkpoint after these fixes. Live
+browser/root acceptance, hosted Atum checks and release gates remain open.
+
 ## Confirmed findings and assembled fixes
 
 - Duplicate roots: wizard and addFolder now check equal/parent/child paths,

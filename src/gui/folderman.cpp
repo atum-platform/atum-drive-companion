@@ -408,7 +408,7 @@ Folder *FolderMan::addFolder(const AccountStatePtr &accountState, const FolderDe
         return nullptr;
     }
 
-    auto vfs = VfsPluginManager::instance().createVfsFromPlugin(folderDefinition.virtualFilesMode);
+    auto vfs = VfsPluginManager::instance().createVfsFromPlugin(definition.virtualFilesMode);
     if (!vfs) {
         qCWarning(lcFolderMan) << u"Could not load plugin for mode" << folderDefinition.virtualFilesMode;
         return nullptr;
@@ -646,6 +646,14 @@ QString FolderMan::checkPathValidityForNewFolder(const QString &path, NewFolderT
         return u"Passingg an empty path is not supported"_s;
     }
     const QString userDir = FileSystem::canonicalPath(path) + QLatin1Char('/');
+    for (const auto &definition : _unavailableFolders) {
+        const QString folderDir = FileSystem::canonicalPath(definition.localPath()) + QLatin1Char('/');
+        const auto relation = FileSystem::isChildPathOf2(folderDir, userDir);
+        if (relation.testFlag(FileSystem::ChildResult::IsEqual) || relation.testFlag(FileSystem::ChildResult::IsChild)
+            || FileSystem::isChildPathOf(userDir, folderDir)) {
+            return tr("This folder overlaps a preserved unavailable sync root. Restore its original account before re-enrolling it.");
+        }
+    }
     for (auto f : _folders) {
         const QString folderDir = FileSystem::canonicalPath(f->path()) + QLatin1Char('/');
 
