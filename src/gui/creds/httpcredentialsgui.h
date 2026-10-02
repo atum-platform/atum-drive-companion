@@ -31,11 +31,12 @@ class HttpCredentialsGui : public HttpCredentials
 {
     Q_OBJECT
 public:
-    HttpCredentialsGui() = default;
+    HttpCredentialsGui();
 
     HttpCredentialsGui(const QString &accessToken, const QString &refreshToken);
 
     void restartOauth() override;
+    void forgetSensitiveData() override;
 
 
 private Q_SLOTS:

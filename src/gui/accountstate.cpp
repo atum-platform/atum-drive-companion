@@ -23,6 +23,7 @@
 
 #include "libsync/creds/abstractcredentials.h"
 #include "libsync/creds/httpcredentials.h"
+#include "libsync/creds/credentialmanager.h"
 
 #include "gui/folderman.h"
 #include "gui/fonticonmessagebox.h"
@@ -67,6 +68,18 @@ AccountState::AccountState(AccountPtr account)
     , _waitingForNewCredentials(false)
 {
     qRegisterMetaType<AccountState *>("AccountState*");
+    connect(account->credentialManager(), &CredentialManager::stateChanged, this, [this] {
+        if (credentialCleanupPending()) {
+            _queueGuard.block();
+        }
+        Q_EMIT credentialCleanupChanged();
+    });
+    if (credentialCleanupPending()) {
+        // Recover a logout interrupted before the account-settings save.
+        _state = SignedOut;
+        _queueGuard.block();
+        QTimer::singleShot(0, this, [this] { this->account()->credentialManager()->clear(); });
+    }
 
     connect(account.data(), &Account::invalidCredentials,
         this, &AccountState::slotInvalidCredentials);
@@ -167,6 +180,7 @@ AccountState::AccountState(AccountPtr account)
     timer->start();
 
     connect(account->credentials(), &AbstractCredentials::requestLogout, this, [this] {
+        _queueGuard.block();
         setState(State::SignedOut);
     });
 
@@ -293,6 +307,8 @@ bool AccountState::isSignedOut() const
 
 void AccountState::signOutByUi()
 {
+    _queueGuard.block();
+    setState(SignedOut);
     account()->credentials()->forgetSensitiveData();
     account()->clearCookieJar();
     setState(SignedOut);
@@ -302,11 +318,31 @@ void AccountState::signOutByUi()
 
 void AccountState::signIn()
 {
+    if (credentialCleanupPending()) {
+        return;
+    }
     if (_state == SignedOut) {
         _waitingForNewCredentials = false;
         setState(Disconnected);
         // persist that we are no longer signed out
         Q_EMIT account()->wantsAccountSaved(account().data());
+    }
+}
+
+bool AccountState::credentialCleanupPending() const
+{
+    return account()->credentialManager()->hasPendingDeletion();
+}
+
+bool AccountState::credentialCleanupFailed() const
+{
+    return account()->credentialManager()->deletionFailed();
+}
+
+void AccountState::retryCredentialCleanup()
+{
+    if (isSignedOut() && credentialCleanupFailed()) {
+        account()->credentialManager()->clear();
     }
 }
 
@@ -322,7 +358,7 @@ void AccountState::tagLastSuccessfullETagRequest(const QDateTime &tp)
 
 void AccountState::checkConnectivity(bool blockJobs)
 {
-    if (isSignedOut() || _waitingForNewCredentials) {
+    if (isSignedOut() || _waitingForNewCredentials || credentialCleanupPending()) {
         return;
     }
     qCInfo(lcAccountState) << u"checkConnectivity blocking:" << blockJobs << account()->displayNameWithHost();
@@ -554,7 +590,7 @@ void AccountState::setSettingUp(bool settingUp)
 }
 bool AccountState::readyForSync() const
 {
-    return !_fetchServerSettingsJob && isConnected();
+    return !_fetchServerSettingsJob && isConnected() && account()->credentials()->ready() && !credentialCleanupPending();
 }
 
 } // namespace OCC

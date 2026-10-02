@@ -1,0 +1,110 @@
+# Atum Drive companion custody and release
+
+Owner scope: finish cloud agents, Atum Drive and cloud execution. This independently
+packaged GPL-2.0-or-later fork contains no Atum proprietary code. Baseline source
+9bf87d5ea35b847a40dd7370fcfe104313150da4; custody source and focused native tests are complete; signed release
+and broader companion integration remain to be completed. Official unchanged Desktop 4.0.0 real S2 evidence belongs
+to the platform PR, not this fork's release.
+
+## Parallel MECE workstreams
+
+1. Companion-only credential state: secure-store enrollment/rotation acknowledgment,
+   failed/lost writes, serialized rotation, and acknowledged/pending logout cleanup.
+   Owns credential manager, HTTP credentials and their existing GUI consumers/tests.
+2. Coordinator-only build/release: official KDE Craft baseline/toolchain, public
+   GPL source/build notices, Atum configuration/branding and pinned artifact receipt.
+   A tested source build precedes signing on the existing MacBook Developer ID.
+3. Coordinator-only platform acceptance: isolated S2 negative/lifecycle proofs and
+   durable app/platform records. These do not change companion source.
+
+The build can prepare dependencies while custody is inspected, but new code must
+compile and pass focused tests before review/signing. Lifecycle/two-Mac acceptance
+depends on the reviewed built artifact. No cross-family nested review, independent
+worker push/PR or production activation is permitted by this plan.
+
+## Confirmed premise
+
+`HttpCredentials` sets ready/access state and calls void persist before the
+asynchronous keychain write finishes, including the refresh path. GUI reauth does
+the same. `CredentialManager::remove` drops its persisted index before the async
+DeletePasswordJob result, and failure only logs. `AccountState::signOutByUi`
+reports SignedOut immediately. These do not satisfy frozen Drive DC-2/DC-4 custody
+and cleanup acknowledgment. Preserve files/dirty journals and upstream token
+rotation; repair these boundaries without a plaintext fallback.
+
+## Build preparation
+
+Both Macs lack a ready Qt/CMake toolchain and their internal disks have only
+3.5/4.2 GiB free. MacBook has its existing valid Anka Developer ID Application
+identity; no key was exported. Mac mini's external ExFAT drive has 2 TB free. A
+new task-owned 20-GiB-capacity sparse APFS image under
+`/Volumes/My Book/atum-companion-build-01a0fad5` is mounted at
+`/private/tmp/atum-companion-build-01a0fad5` for the official KDE Craft dependency
+workspace. Only public source/build dependencies go there. Signing is disabled
+in this build lane. Existing user files and signing keychains are untouched.
+
+Routing decision b855b330-ccfe-456e-9d62-167634444a07 enforced direct exploration
+because native Codex quota was exhausted. No worker was spawned. A single review
+will follow assembly and real focused verification; no release is claimed yet.
+
+The coordinator owns source at
+`/Users/nmmacmini/projects/atum-platform/.worktrees/drive-companion-custody`,
+branch feat/drive-custody-release, authoritative origin
+https://github.com/atum-platform/atum-drive-companion.git. The initial temporary
+clone remains an unchanged baseline build input only. Review transport rejected
+/tmp as outside configured workspaces before running; this owned source copy
+fits its workspace fence.
+
+One focused architecture consultation is job
+9229dcf2-0f54-4ae3-8a70-d21a443056cf, route decision
+9891cf00-5ac8-40d6-a857-4b0d27b93900 (enforced OpenCode/default because Claude
+quota was exhausted). Exact owner:
+cloud-launch-finish-01a0fad5:companion-custody-design:Drive companion custody design:Drive companion custody design.
+Result must be read before acknowledgment/implementation decisions. This is
+advice, not assembly code review or a release approval.
+
+## Custody implementation
+
+The retained consultation was read, acknowledged, and routing feedback closed.
+Enrollment and refresh publish ready/access/fetched only after an acknowledged
+keychain write. The access manager attaches no bearer while unready. A durable,
+non-secret rotation marker is saved before the old refresh token reaches OAuth;
+an interrupted or uncertain rotation requires fresh browser sign-in. Unlike a
+blind token retry, this cannot replay a token whose response was lost. These
+failures request sign-out without clearing queued uploads/dirty journals.
+
+Deletion retains the index until NoError or EntryNotFound, prevents reads and
+reconnect while pending, exposes failure with an explicit retry, and fences late
+writes with a second delete. Separate operation metadata avoids confusing fences
+with credential keys. Scope is captured once, including across a server-URL
+change. Real jobs hold the account until acknowledgement so cancellation of an
+enrollment window can finish its cleanup. The initial wizard completes only
+after secure storage succeeds. Files are never removed by these paths.
+
+Focused verification includes controlled failure/order jobs and the existing
+real QKeychain path. No production plaintext fallback is enabled. The isolated
+build configured and compiled successfully with Qt 6.11.1/QtKeychain 0.16.0 and
+the restored vendor shelf. The final native suite has 15 passes, zero failures
+and zero skips, including real secure-store write/read/corrupt-read/delete,
+write/delete timeout fences and both late-write/delete orderings. The OAuth
+suite has 17 passes, zero failures and zero skips, including lost/rejected
+rotating-token replies. Neither suite enables a production plaintext fallback.
+
+The initial expanded rerun exposed upstream one-second/five-second fixed test
+waits: native OS completion took several seconds. Completion-based bounded waits
+replace those timing assumptions. The Apple QtKeychain backend dispatches its
+completion on the main queue; custody tests use the same native Cocoa
+QApplication dispatcher as Desktop instead of QCoreApplication/offscreen.
+The test fix does not relax production's thirty-second custody timeout. Test
+scope remains account/core credentials; it is not a packaged wizard/account
+switch, process-crash or two-Mac acceptance receipt.
+
+Reproduce from an official restored Craft SDK: configure CMake with that SDK
+as CMAKE_PREFIX_PATH, BUILD_TESTING=ON and VFS/crash-reporting/auto-update off;
+build targets `testcredentialmanager testoauth`; run those two binaries. On
+macOS use the native Cocoa dispatcher for the credential binary. All test
+credentials are disposable and bound to generated test account UUIDs. The
+controlled-job seam is private/friend-only; the runtime always starts real
+QKeychain jobs with insecure fallback disabled. Preserve LICENSE/COPYING and
+upstream attribution when packaging. Signing/release and two-Mac acceptance
+remain unclaimed.

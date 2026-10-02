@@ -43,6 +43,8 @@ class OPENCLOUD_GUI_EXPORT AccountState : public QObject
     Q_PROPERTY(Account *account READ accountForQml CONSTANT)
     Q_PROPERTY(bool isConnected READ isConnected NOTIFY isConnectedChanged)
     Q_PROPERTY(AccountState::State state READ state NOTIFY stateChanged)
+    Q_PROPERTY(bool credentialCleanupPending READ credentialCleanupPending NOTIFY credentialCleanupChanged)
+    Q_PROPERTY(bool credentialCleanupFailed READ credentialCleanupFailed NOTIFY credentialCleanupChanged)
     QML_ELEMENT
     QML_UNCREATABLE("Only created by AccountManager")
 
@@ -87,6 +89,9 @@ public:
     State state() const;
 
     bool isSignedOut() const;
+    bool credentialCleanupPending() const;
+    bool credentialCleanupFailed() const;
+    void retryCredentialCleanup();
 
     [[nodiscard]] bool readyForSync() const;
 
@@ -129,6 +134,7 @@ Q_SIGNALS:
     void stateChanged(State state);
     void isConnectedChanged();
     void isSettingUpChanged();
+    void credentialCleanupChanged();
 
 protected Q_SLOTS:
     void slotConnectionValidatorResult(ConnectionValidator::Status status, const QStringList &errors);

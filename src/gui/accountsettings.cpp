@@ -100,6 +100,7 @@ AccountSettings::AccountSettings(const AccountStatePtr &accountState, QWidget *p
     });
 
     connect(_accountState.data(), &AccountState::stateChanged, this, &AccountSettings::slotAccountStateChanged);
+    connect(_accountState.data(), &AccountState::credentialCleanupChanged, this, &AccountSettings::slotAccountStateChanged);
     slotAccountStateChanged();
 
     connect(_accountState.get(), &AccountState::isSettingUpChanged, this, [this] {
@@ -121,6 +122,10 @@ AccountSettings::AccountSettings(const AccountStatePtr &accountState, QWidget *p
 
 void AccountSettings::slotToggleSignInState()
 {
+    if (_accountState->credentialCleanupFailed()) {
+        _accountState->retryCredentialCleanup();
+        return;
+    }
     if (_accountState->isSignedOut()) {
         _accountState->signIn();
     } else {
@@ -360,7 +365,13 @@ void AccountSettings::slotAccountStateChanged()
         break;
     }
     case AccountState::SignedOut:
-        showConnectionLabel(tr("Signed out"), SyncResult::Offline);
+        if (_accountState->credentialCleanupFailed()) {
+            showConnectionLabel(tr("Signed out. Credential cleanup failed; retry when the keychain is available."), SyncResult::Problem);
+        } else if (_accountState->credentialCleanupPending()) {
+            showConnectionLabel(tr("Signed out. Removing saved credentials…"), SyncResult::Offline);
+        } else {
+            showConnectionLabel(tr("Signed out"), SyncResult::Offline);
+        }
         break;
     case AccountState::Connecting:
         if (NetworkInformation::instance()->isBehindCaptivePortal()) {

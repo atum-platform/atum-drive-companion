@@ -89,7 +89,6 @@ AccountPtr SetupWizardAccountBuilder::build() const
 
     // TODO: perhaps _authenticationStrategy->setUpAccountPtr(...) would be more elegant? no need for getters then
     newAccountPtr->setCredentials(_authenticationStrategy->makeCreds());
-    newAccountPtr->credentials()->persist();
     OAuth::persist(newAccountPtr, _authenticationStrategy->dynamicRegistrationData(), _authenticationStrategy->idToken());
 
     newAccountPtr->setDavDisplayName(_displayName);
