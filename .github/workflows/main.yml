@@ -172,7 +172,7 @@ jobs:
         } elseif($IsLinux) {
             & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c dev-utils/linuxdeploy
             # ensure we have fuse3-devel installed
-            dnf install -y fuse3-devel file
+            dnf install -y fuse3-devel file dbus-daemon gnome-keyring libsecret
         } elseif($IsMacOS -and ${env:SIGN_PACKAGE} -ieq "true") {
             brew install packages
         }
@@ -220,7 +220,11 @@ jobs:
 
     - name: Run tests
       run: |
-        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache --test opencloud/opencloud-desktop
+        if ($IsLinux) {
+            dbus-run-session -- bash "${env:GITHUB_WORKSPACE}/.github/workflows/with-test-keyring.sh" pwsh -File "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache --test opencloud/opencloud-desktop
+        } else {
+            & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache --test opencloud/opencloud-desktop
+        }
 
     - name: Clang tidy
       if: ${{ matrix.clang_tidy }}

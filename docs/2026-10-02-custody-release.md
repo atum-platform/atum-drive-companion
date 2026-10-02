@@ -1,5 +1,14 @@
 # Atum Drive companion custody and release
 
+Hosted validation run 37000282801 at 8bc5202 built successfully, but Linux's
+real credential tests failed because the container had no D-Bus Secret Service
+(`Cannot autolaunch D-Bus without X11 $DISPLAY`). ARM macOS passed; fail-fast
+cancelled Intel macOS and Windows. This is not passing matrix evidence. Linux
+tests now run in a fresh D-Bus session with a disposable GNOME keyring and a real
+store/read/delete preflight. The directory and daemon are cleaned on exit;
+only synthetic test entries use it. No production fallback or test skip was
+added. Local bash syntax/diff checks precede a new exact-head hosted run.
+
 Owner scope: finish cloud agents, Atum Drive and cloud execution. This independently
 packaged GPL-2.0-or-later fork contains no Atum proprietary code. Baseline source
 9bf87d5ea35b847a40dd7370fcfe104313150da4; custody source and focused native tests are complete; signed release
