@@ -7,6 +7,11 @@ umask 077
 keyring_fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/atum-ci-keyring.XXXXXXXX")
 keyring_fixture_pid=
 cleanup() {
+    keyring_fixture_status=$?
+    if test "$keyring_fixture_status" -ne 0; then
+        printf 'Disposable Secret Service preflight failed (%s)\n' "$keyring_fixture_status" >&2
+        cat "$keyring_fixture_dir/daemon.log" >&2 || true
+    fi
     if test -n "$keyring_fixture_pid"; then
         kill "$keyring_fixture_pid" 2>/dev/null || true
         wait "$keyring_fixture_pid" 2>/dev/null || true

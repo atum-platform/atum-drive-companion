@@ -9,6 +9,15 @@ store/read/delete preflight. The directory and daemon are cleaned on exit;
 only synthetic test entries use it. No production fallback or test skip was
 added. Local bash syntax/diff checks precede a new exact-head hosted run.
 
+Run 37003038322 at bbe2fcb failed at the new Secret Service bootstrap before
+tests; other matrix jobs were cancelled by fail-fast. The daemon's diagnostic
+was inside its disposable directory and absent from Actions output. The wrapper
+now emits its test-only daemon error on failure, and a Linux preflight runs
+before the lengthy Craft dependency/build stage. No failed check is treated as
+passing and no unchanged-code rerun was requested. Local Linux probes were
+unavailable: Mini Docker has no daemon socket, rpi SSH is down, and the asus
+alias does not resolve on this host. Hosted diagnostics remain the actual lane.
+
 Owner scope: finish cloud agents, Atum Drive and cloud execution. This independently
 packaged GPL-2.0-or-later fork contains no Atum proprietary code. Baseline source
 9bf87d5ea35b847a40dd7370fcfe104313150da4; custody source and focused native tests are complete; signed release

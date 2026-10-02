@@ -125,6 +125,12 @@ jobs:
         key: ${{ runner.os }}-${{ matrix.target }}-${{ github.run_id }} # generate a new key every time to trigger an update
         restore-keys: ${{ runner.os }}-${{ matrix.target }}
 
+    - name: Linux credential service preflight
+      if: matrix.target == 'linux-gcc-x86_64'
+      run: |
+        dnf install -y dbus-daemon gnome-keyring libsecret
+        dbus-run-session -- bash "${env:GITHUB_WORKSPACE}/.github/workflows/with-test-keyring.sh" /usr/bin/true
+
     - name: Restore cache
       if: github.event_name == 'pull_request'
       uses: actions/cache/restore@v6
