@@ -147,3 +147,14 @@ run `python3 test/manual/journal-exclusion/prove.py <built-journal-probe>`. It l
 the real companion library, uses only generated temporary data and kills only its
 own owner process. Its JSON receipt distinguishes this proof from full Desktop
 acceptance.
+
+## Hosted validation
+
+Custody PR https://github.com/atum-platform/atum-drive-companion/pull/1 is open.
+GitHub reported Actions enabled but zero registered workflows/runs/check suites;
+enabling the imported workflow by filename returned 404 despite the source file
+existing on main. The workflow name now identifies this fork, and the upstream
+scheduled release trigger is removed: this repository does not schedule vendor
+signing or releases. Normal PR validation still uses the existing hosted Linux,
+macOS and Windows build/test matrix. Required current-head checks must be observed
+before merging; an empty check list is not a passing result.

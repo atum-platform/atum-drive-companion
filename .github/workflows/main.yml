@@ -1,4 +1,4 @@
-name: OpenCloud Desktop CI
+name: Atum Drive Companion CI
 
 on:
   push:
@@ -17,9 +17,6 @@ on:
         options:
           - stable
           - beta
-  schedule:
-    - cron: '11 3 * * 1-5'
-      timezone: "Europe/Berlin"
 
 concurrency: 
   group: ${{ github.head_ref || github.run_id }}
