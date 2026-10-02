@@ -17,6 +17,7 @@
 #include "account.h"
 #include "accountmanager.h"
 #include "accountstate.h"
+#include "atumrootbinding.h"
 #include "common/asserts.h"
 #include "configfile.h"
 #include "gui/folder.h"
@@ -186,21 +187,27 @@ std::optional<qsizetype> FolderMan::loadFolders()
 
     auto settings = ConfigFile::makeQSettings();
     const auto size = settings.beginReadArray(foldersC());
+    _unavailableFolders.clear();
 
     for (auto i = 0; i < size; ++i) {
         settings.setArrayIndex(i);
         FolderDefinition folderDefinition = FolderDefinition::load(settings);
 
-        if (SyncJournalDb::dbIsTooNewForClient(folderDefinition.absoluteJournalPath())) {
+        if (!Theme::instance()->oauthIdentityProfile() && SyncJournalDb::dbIsTooNewForClient(folderDefinition.absoluteJournalPath())) {
             continue;
         }
 
         auto vfs = VfsPluginManager::instance().createVfsFromPlugin(folderDefinition.virtualFilesMode);
+        auto account = AccountManager::instance()->account(folderDefinition.accountUUID());
+        if (Theme::instance()->oauthIdentityProfile() && (!vfs || account.isNull())) {
+            qCWarning(lcFolderMan) << u"Atum folder settings are unavailable; preserved without opening the root:" << folderDefinition.localPath();
+            _unavailableFolders.push_back(std::move(folderDefinition));
+            continue;
+        }
         if (!vfs) {
             // TODO: Must do better error handling
             qFatal("Could not load plugin");
         }
-        auto account = AccountManager::instance()->account(folderDefinition.accountUUID());
         if (account.isNull()) {
             qFatal("Could not load account");
         }
@@ -208,6 +215,14 @@ std::optional<qsizetype> FolderMan::loadFolders()
     }
     settings.endArray();
 
+    if (!_unavailableFolders.isEmpty()) {
+        auto *message = new QMessageBox(QMessageBox::Warning, tr("Atum Drive is paused"),
+            tr("Some saved roots have an unavailable account or sync component. Their settings, files and journals were preserved. Restore the original "
+               "account and restart Atum Drive to resume."),
+            QMessageBox::Ok);
+        message->setAttribute(Qt::WA_DeleteOnClose);
+        message->open();
+    }
     Q_EMIT folderListChanged();
 
     return _folders.size();
@@ -217,7 +232,7 @@ void FolderMan::saveFolders()
 {
     auto settings = ConfigFile::makeQSettings();
     settings.remove(foldersC());
-    settings.beginWriteArray(foldersC(), _folders.size());
+    settings.beginWriteArray(foldersC(), _folders.size() + _unavailableFolders.size());
     int i = 0;
     for (const auto folder : std::as_const(_folders)) {
         settings.setArrayIndex(i++);
@@ -227,6 +242,10 @@ void FolderMan::saveFolders()
         definitionToSave.setWebDavUrl(folder->webDavUrl());
         definitionToSave.setDisplayName(folder->displayName());
         FolderDefinition::save(settings, definitionToSave);
+    }
+    for (const auto &definition : std::as_const(_unavailableFolders)) {
+        settings.setArrayIndex(i++);
+        FolderDefinition::save(settings, definition);
     }
     settings.endArray();
 }
@@ -366,19 +385,36 @@ Folder *FolderMan::addFolder(const AccountStatePtr &accountState, const FolderDe
 {
     // Choose a db filename
     auto definition = folderDefinition;
-    definition.journalPath = SyncJournalDb::makeDbName(folderDefinition.localPath());
+    const bool atum = Theme::instance()->oauthIdentityProfile().has_value();
+    if (atum) {
+        const auto canonical = QFileInfo(definition.localPath()).canonicalFilePath();
+        if (!canonical.isEmpty()) {
+            definition.setLocalPath(canonical);
+        }
+        definition.journalPath = AtumRootBinding::journalName();
+        definition.virtualFilesMode = Vfs::Mode::Off;
+        const auto duplicate = checkPathValidityForNewFolder(definition.localPath(), NewFolderType::SpacesFolder, accountState->account()->uuid());
+        const auto candidate = AtumRootBinding::checkCandidate(definition.localPath(),
+            {accountState->account()->url().toString(), accountState->account()->atumIssuer(), accountState->account()->atumSubject(), definition.spaceId()});
+        if (!duplicate.isEmpty() || !candidate) {
+            qCWarning(lcFolderMan) << u"Atum root was not added:" << (duplicate.isEmpty() ? candidate.error() : duplicate);
+            return nullptr;
+        }
+    } else {
+        definition.journalPath = SyncJournalDb::makeDbName(folderDefinition.localPath());
+    }
 
-    if (!ensureJournalGone(definition.absoluteJournalPath())) {
+    if (!atum && !ensureJournalGone(definition.absoluteJournalPath())) {
         return nullptr;
     }
 
-    auto vfs = VfsPluginManager::instance().createVfsFromPlugin(folderDefinition.virtualFilesMode);
+    auto vfs = VfsPluginManager::instance().createVfsFromPlugin(definition.virtualFilesMode);
     if (!vfs) {
         qCWarning(lcFolderMan) << u"Could not load plugin for mode" << folderDefinition.virtualFilesMode;
         return nullptr;
     }
 
-    auto folder = addFolderInternal(definition, accountState, std::move(vfs));
+    auto folder = addFolderInternal(definition, accountState, std::move(vfs), atum);
 
     if (folder) {
         Q_EMIT folderSyncStateChange(folder);
@@ -389,12 +425,9 @@ Folder *FolderMan::addFolder(const AccountStatePtr &accountState, const FolderDe
     return folder;
 }
 
-Folder *FolderMan::addFolderInternal(
-    FolderDefinition folderDefinition,
-    const AccountStatePtr &accountState,
-    std::unique_ptr<Vfs> vfs)
+Folder *FolderMan::addFolderInternal(FolderDefinition folderDefinition, const AccountStatePtr &accountState, std::unique_ptr<Vfs> vfs, bool enrollEmptyRoot)
 {
-    auto folder = new Folder(folderDefinition, accountState, std::move(vfs), this);
+    auto folder = new Folder(folderDefinition, accountState, std::move(vfs), this, enrollEmptyRoot);
 
     qCInfo(lcFolderMan) << u"Adding folder to Folder Map " << folder << folder->path();
     _folders.push_back(folder);
@@ -613,6 +646,14 @@ QString FolderMan::checkPathValidityForNewFolder(const QString &path, NewFolderT
         return u"Passingg an empty path is not supported"_s;
     }
     const QString userDir = FileSystem::canonicalPath(path) + QLatin1Char('/');
+    for (const auto &definition : _unavailableFolders) {
+        const QString folderDir = FileSystem::canonicalPath(definition.localPath()) + QLatin1Char('/');
+        const auto relation = FileSystem::isChildPathOf2(folderDir, userDir);
+        if (relation.testFlag(FileSystem::ChildResult::IsEqual) || relation.testFlag(FileSystem::ChildResult::IsChild)
+            || FileSystem::isChildPathOf(userDir, folderDir)) {
+            return tr("This folder overlaps a preserved unavailable sync root. Restore its original account before re-enrolling it.");
+        }
+    }
     for (auto f : _folders) {
         const QString folderDir = FileSystem::canonicalPath(f->path()) + QLatin1Char('/');
 

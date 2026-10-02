@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+#pragma once
+#define ATUM_DRIVE_ORIGIN "@ATUM_DRIVE_ORIGIN@"
+#define ATUM_MAS_ISSUER "@ATUM_MAS_ISSUER@"
+#define ATUM_OAUTH_CLIENT_ID "@ATUM_OAUTH_CLIENT_ID@"

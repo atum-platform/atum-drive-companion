@@ -234,6 +234,17 @@ void ExcludedFiles::addManualExclude(const QString &expr)
     prepare();
 }
 
+void ExcludedFiles::setAtumRootExclusions()
+{
+    _atumExcludes = {QStringLiteral(".atum-drive-*"), QStringLiteral(".sync_*.db*"), QStringLiteral("._sync_*.db*"), QStringLiteral(".OpenCloudSync.log*"),
+        QStringLiteral(".env*"), QStringLiteral("*.pem"), QStringLiteral("*.key"), QStringLiteral("*token*"), QStringLiteral(".netrc"),
+        QStringLiteral(".npmrc"), QStringLiteral("*.db"), QStringLiteral("*.sqlite"), QStringLiteral("*.sqlite3"), QStringLiteral("*-wal"),
+        QStringLiteral("*-shm"), QStringLiteral("*-journal"), QStringLiteral(".git/"), QStringLiteral(".ssh/"), QStringLiteral(".aws/"),
+        QStringLiteral(".codex/"), QStringLiteral(".agents/"), QStringLiteral(".hermes/"), QStringLiteral(".atum/"), QStringLiteral(".atum-managed/"),
+        QStringLiteral(".protected-skills/"), QStringLiteral("node_modules/"), QStringLiteral(".venv/"), QStringLiteral("venv/")};
+    reloadExcludeFiles();
+}
+
 void ExcludedFiles::clearManualExcludes()
 {
     _manualExcludes.clear();
@@ -274,6 +285,7 @@ bool ExcludedFiles::reloadExcludeFiles()
         }
     }
     _allExcludes.append(_manualExcludes);
+    _allExcludes.append(_atumExcludes);
     prepare();
     return success;
 }

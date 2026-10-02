@@ -17,12 +17,14 @@
 
 #include "opencloudsynclib.h"
 #include <QNetworkAccessManager>
+#include <QUrl>
 
 class QByteArray;
 class QUrl;
 
 namespace OCC {
 class CookieJar;
+struct OAuthIdentityProfile;
 
 /**
  * @brief The AccessManager class
@@ -35,7 +37,7 @@ class OPENCLOUD_SYNC_EXPORT AccessManager : public QNetworkAccessManager
 public:
     static QByteArray generateRequestId();
 
-    AccessManager(QObject *parent = nullptr);
+    AccessManager(QObject *parent = nullptr, const OAuthIdentityProfile *identity = nullptr);
 
     QSet<QSslCertificate> customTrustedCaCertificates();
 
@@ -59,6 +61,9 @@ protected:
     QNetworkReply *createRequest(QNetworkAccessManager::Operation op, const QNetworkRequest &request, QIODevice *outgoingData = nullptr) override;
 
 private:
+    bool _pinned = false;
+    QUrl _pinnedDriveOrigin;
+    QUrl _pinnedIssuerOrigin;
     QSet<QSslCertificate> _customTrustedCaCertificates;
 };
 

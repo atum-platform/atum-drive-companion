@@ -103,6 +103,14 @@ public:
      */
     void setDefaultSyncRoot(const QString &syncRoot);
 
+    QString atumIssuer() const { return _atumIssuer; }
+    QString atumSubject() const { return _atumSubject; }
+    void setAtumIdentity(const QString &issuer, const QString &subject)
+    {
+        _atumIssuer = issuer;
+        _atumSubject = subject;
+    }
+
     QString davDisplayName() const;
     void setDavDisplayName(const QString &newDisplayName);
 
@@ -227,6 +235,8 @@ private:
 
     QWeakPointer<Account> _sharedThis;
     QUuid _uuid;
+    QString _atumIssuer;
+    QString _atumSubject;
     QString _displayName;
     QString _defaultSyncRoot;
     QIcon _avatarImg;

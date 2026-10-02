@@ -104,10 +104,17 @@ bool PropagateItemJob::scheduleSelfOrChild()
     qCInfo(lcPropagator) << u"Starting propagation of" << _item << u"by" << this;
 
     setState(Running);
-    if (thread() != QApplication::instance()->thread()) {
-        QMetaObject::invokeMethod(this, &PropagateItemJob::start); // We could be in a different thread (neon jobs)
-    } else {
+    const auto startOwned = [this] {
+        if (!propagator()->syncOptions()._localRootValid()) {
+            done(SyncFileItem::FatalError, tr("The enrolled local root is unavailable or changed. Sync is paused."));
+            return;
+        }
         start();
+    };
+    if (thread() != QApplication::instance()->thread()) {
+        QMetaObject::invokeMethod(this, startOwned); // We could be in a different thread (neon jobs)
+    } else {
+        startOwned();
     }
     return true;
 }

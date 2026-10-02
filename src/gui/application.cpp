@@ -50,6 +50,7 @@
 #include <QApplication>
 #include <QDesktopServices>
 #include <QMenuBar>
+#include <QMessageBox>
 
 using namespace Qt::Literals::StringLiterals;
 using namespace OCC;
@@ -80,6 +81,33 @@ void setUpInitialSyncFolder(AccountStatePtr accountStatePtr, bool useVfs)
             // we do not want to set up folder sync connections for disabled spaces (#10173)
             spaces.erase(std::remove_if(spaces.begin(), spaces.end(), [](auto *space) { return space->disabled(); }), spaces.end());
 
+            if (Theme::instance()->oauthIdentityProfile()) {
+                spaces.erase(
+                    std::remove_if(spaces.begin(), spaces.end(), [](auto *space) { return space->drive().getDriveType() != QStringLiteral("personal"); }),
+                    spaces.end());
+                if (spaces.size() != 1) {
+                    qCWarning(lcApplication) << u"Atum requires exactly one enabled personal space; sync has not started";
+                    auto *message = new QMessageBox(QMessageBox::Warning, QObject::tr("Atum Drive is paused"),
+                        QObject::tr("Your account must have exactly one enabled personal space. No folder was enrolled and sync has not started."),
+                        QMessageBox::Ok);
+                    message->setAttribute(Qt::WA_DeleteOnClose);
+                    message->open();
+                    return;
+                }
+                auto *space = spaces.first();
+                for (auto *existing : FolderMan::instance()->folders()) {
+                    if (existing->accountState() == accountStatePtr && existing->space() == space) {
+                        finalize();
+                        return;
+                    }
+                }
+                if (auto *folder = addFolder(accountStatePtr->account()->defaultSyncRoot(), QUrl(space->drive().getRoot().getWebDavUrl()),
+                        space->drive().getRoot().getId(), space->displayName())) {
+                    folder->setPriority(space->priority());
+                    finalize();
+                }
+                return;
+            }
             if (!spaces.isEmpty()) {
                 const QString localDir(accountStatePtr->account()->defaultSyncRoot());
                 FileSystem::setFolderMinimumPermissions(localDir);
@@ -89,7 +117,9 @@ void setUpInitialSyncFolder(AccountStatePtr accountStatePtr, bool useVfs)
                     const QString folderName = FolderMan::instance()->findGoodPathForNewSyncFolder(
                         localDir, name, FolderMan::NewFolderType::SpacesFolder, accountStatePtr->account()->uuid());
                     auto folder = addFolder(folderName, QUrl(space->drive().getRoot().getWebDavUrl()), space->drive().getRoot().getId(), name);
-                    folder->setPriority(space->priority());
+                    if (folder) {
+                        folder->setPriority(space->priority());
+                    }
                 }
                 finalize();
             }

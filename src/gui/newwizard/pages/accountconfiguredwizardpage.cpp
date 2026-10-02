@@ -25,7 +25,7 @@ AccountConfiguredWizardPage::AccountConfiguredWizardPage(const QString &defaultS
     _ui->syncEverythingRadioButton->setChecked(true);
 
     // just adjusting the visibility should be sufficient for these branding options
-    if (Theme::instance()->wizardSkipAdvancedPage()) {
+    if (Theme::instance()->wizardSkipAdvancedPage() || Theme::instance()->oauthIdentityProfile()) {
         _ui->advancedConfigGroupBox->setVisible(false);
     }
 
@@ -38,6 +38,10 @@ AccountConfiguredWizardPage::AccountConfiguredWizardPage(const QString &defaultS
             // the directory chooser should guarantee that the directory exists
             Q_ASSERT(QDir(directory).exists());
 
+            if (Theme::instance()->oauthIdentityProfile()) {
+                _ui->localDirectoryLineEdit->setText(QDir::toNativeSeparators(directory));
+                return;
+            }
             if (auto result = VfsPluginManager::instance().prepare(directory, {}, VfsPluginManager::instance().bestAvailableVfsMode()); !result) {
                 auto *box =
                     new FontIconMessageBox({Resources::FontIcon::DefaultGlyphes::Warning}, tr("Sync location not supported"), result.error(), QMessageBox::Ok, this);

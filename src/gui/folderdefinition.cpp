@@ -13,6 +13,7 @@
  */
 
 #include "folderdefinition.h"
+#include "theme.h"
 
 #include <QDir>
 #include <QSettings>
@@ -103,6 +104,10 @@ FolderDefinition FolderDefinition::load(QSettings &settings)
 
     folder.virtualFilesMode = Vfs::Mode::Off;
 
+    // Atum's owner check must precede any platform root/VFS mutation.
+    if (Theme::instance()->oauthIdentityProfile()) {
+        return folder;
+    }
     QString vfsModeString = settings.value("virtualFilesMode").toString();
 
     const auto vfs = Utility::isWindows() ? Vfs::Mode::WindowsCfApi : Vfs::Mode::OpenVFS;

@@ -13,6 +13,7 @@
  */
 
 #include "httplogger.h"
+#include "theme.h"
 
 #include "common/chronoelapsedtimer.h"
 
@@ -138,7 +139,7 @@ namespace OCC {
 
 void HttpLogger::logRequest(QNetworkReply *reply, QNetworkAccessManager::Operation operation, QIODevice *device)
 {
-    if (!lcNetworkHttp().isInfoEnabled()) {
+    if (Theme::instance()->oauthIdentityProfile() || !lcNetworkHttp().isInfoEnabled()) {
         return;
     }
 

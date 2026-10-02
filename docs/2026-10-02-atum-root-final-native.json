@@ -1,0 +1,58 @@
+{
+  "checkpoint": "three verified retained follow-up advisories",
+  "reviewed_source_commit": "2e225d91baf03ee6e9110c8305dbb8aafec82669",
+  "review_job": "4f5749a0-6394-46fb-87bd-bc0f6fe68fd0",
+  "review_verdict": "SHIP narrow source checkpoint",
+  "fresh_cases": 30,
+  "unchanged_suite_cases": 90,
+  "applicable_passing_cases": 120,
+  "receipts": [
+    {
+      "suite": "binding",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timestamp_local": "2026-10-02T21:42:09",
+      "receipt_sha256": "35aeb6096ed4f260403d79b4abbfccb3e714342b72c1be544eebe58b5376aecd"
+    },
+    {
+      "suite": "folder",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timestamp_local": "2026-10-02T21:42:09",
+      "receipt_sha256": "5e64fd1bb18137a7ba36d73417c7777900d32059fb2de810d36e6800da473bd0"
+    },
+    {
+      "suite": "folderman-unbranded",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timestamp_local": "2026-10-02T21:46:22",
+      "receipt_sha256": "3bb49cc3037c971310b99c89fe36584331dd1907828d393035ad7608aca0ed77"
+    }
+  ],
+  "source_sha256": {
+    "src/cmd/cmd.cpp": "c6a2580ba9d06f6291b3db67285582c1338a4e1c567f33448636cb4263515966",
+    "src/gui/application.cpp": "077fd32cb12025ce7879acc843c711090f8597fb1900a106c06df8e27a117e40",
+    "src/gui/atumrootbinding.cpp": "75018b4726850e409f90c97e81addc2e64ec524c01e6ba8194faa8cafc06d67a",
+    "src/gui/atumrootbinding.h": "e3b42fe6cb26d25741bbe4e4f1878e36de66bb692de1365699f350084afb3516",
+    "src/gui/folder.cpp": "7272e5c459f68423691f04b0d67df36ddcc71b5c9932133d356757928e3c502a",
+    "src/gui/folder.h": "6857f46be070039f4ee1fbe260295e4d5294126a3a9e5e764edb9410d24dbec1",
+    "src/gui/folderman.cpp": "aeb7010adfa75df86f83267ca6f06f24ff735a8f62410fbb2eb56a40d72be4c1",
+    "src/gui/folderman.h": "539c08222a8324955ec8857f85881a68d35ce102ea5fe97cf49aa7b60cd632f2",
+    "src/gui/newwizard/states/accountconfiguredsetupwizardstate.cpp": "d904d6042cfa888c1f5fff16c2854e9287a0fe4d88653d0f1ad3ccb21babeba1",
+    "src/libsync/owncloudpropagator.cpp": "71477b1a3d9c0052fe9952d3c3b1c3445b761c9271a669075c8e7dd1837dae1d",
+    "src/libsync/syncengine.cpp": "2859d6b2fc63d146eccdd63caf7cfcf87a2159872fd46b448607893d3272f8a5",
+    "src/libsync/syncoptions.h": "dcd1f6ab79d8086669ab5b0d96c9ae12697e6a153f60e236743021c7e6d002d5",
+    "test/CMakeLists.txt": "eb993f9c987c9afa745a01e076f1e65fcba5ba0d9a2eef6aa49e97322cb914a1",
+    "test/testatumrootbinding.cpp": "85fa2263425cbc14dd985959ec5e706aaaae4dc1afd921b2ee027787f81e2ad7",
+    "test/testatumrootfolder.cpp": "1e0d8008d56a1450887c0fdbcbc955af01c1412052e139f94856dc155a3ae54f",
+    "test/testsyncengine.cpp": "29184b24718d7acf1cf04c07d88d6835e17b721ff311524e076198fe39bb9577"
+  },
+  "not_counted": "Generic FolderMan fixtures were refused under pinned S2 (2 of 5 fail); the correct unbranded rerun above passes. Synthetic credentials/HTTP are not browser authentication.",
+  "live_or_release_accepted": false
+}

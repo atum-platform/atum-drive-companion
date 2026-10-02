@@ -34,6 +34,7 @@
 #include <QNetworkReply>
 #include <QPixmap>
 #include <QRandomGenerator>
+#include <QRegularExpression>
 #include <ranges>
 
 using namespace std::chrono;
@@ -46,6 +47,18 @@ Q_LOGGING_CATEGORY(lcOauth, "sync.credentials.oauth", QtInfoMsg)
 namespace {
 
 const QString wellKnownPathC = QStringLiteral("/.well-known/openid-configuration");
+
+bool pinnedEndpoint(const QUrl &endpoint, const QString &issuer)
+{
+    const QUrl authority(issuer);
+    return endpoint.isValid() && endpoint.scheme() == QStringLiteral("https") && endpoint.userInfo().isEmpty() && !endpoint.hasQuery()
+        && !endpoint.hasFragment() && endpoint.host() == authority.host() && endpoint.port(443) == authority.port(443);
+}
+
+bool successfulPinnedReply(const QNetworkReply *reply)
+{
+    return reply->error() == QNetworkReply::NoError && reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200;
+}
 
 QString redirectUrlC()
 {
@@ -63,7 +76,7 @@ QString renderHttpTemplate(const QString &title, const QString &content)
         {
             {"TITLE", title}, //
             {"CONTENT", content}, //
-            {"ICON", loadFile(QStringLiteral(":/client/OpenCloud/theme/universal/wizard_logo.svg"))}, //
+            {"ICON", loadFile(QStringLiteral(":/client/%1/theme/universal/wizard_logo.svg").arg(Theme::instance()->appName()))}, //
             {"BACKGROUND_COLOR", Theme::instance()->wizardHeaderBackgroundColor().name()}, //
             {"FONT_COLOR", Theme::instance()->wizardHeaderTitleColor().name()}, //
         });
@@ -219,17 +232,63 @@ void logCredentialsJobResult(CredentialJob *credentialsJob)
 }
 }
 
-OAuth::OAuth(const QUrl &serverUrl, QNetworkAccessManager *networkAccessManager, const QVariantMap &dynamicRegistrationData, QObject *parent)
+OAuth::OAuth(const QUrl &serverUrl, QNetworkAccessManager *networkAccessManager, const QVariantMap &dynamicRegistrationData, QObject *parent,
+    std::optional<OAuthIdentityProfile> identity)
     : QObject(parent)
     , _serverUrl(serverUrl)
     , _dynamicRegistrationData(dynamicRegistrationData)
     , _networkAccessManager(networkAccessManager)
     , _clientId(Theme::instance()->oauthClientId())
     , _clientSecret(Theme::instance()->oauthClientSecret())
+    , _identity(Theme::instance()->oauthIdentityProfile() ? Theme::instance()->oauthIdentityProfile() : std::move(identity))
 {
+    if (_identity) {
+        _clientId = _identity->clientId;
+        _clientSecret.clear();
+        _scopes = _identity->scopes;
+    }
 }
 
 OAuth::~OAuth() = default;
+
+bool OAuth::identityProfileMatchesServer() const
+{
+    return !_identity
+        || (_serverUrl == _identity->driveOrigin && _serverUrl.scheme() == QStringLiteral("https") && _serverUrl.userInfo().isEmpty() && !_serverUrl.hasQuery()
+            && !_serverUrl.hasFragment() && _serverUrl.path().isEmpty() && pinnedEndpoint(QUrl(_identity->issuer), _identity->issuer)
+            && !_identity->clientId.isEmpty() && _identity->scopes == QStringLiteral("openid"));
+}
+
+void OAuth::verifyTokenIdentity(const QVariantMap &data, const IdToken &idToken, const QString &accessToken, std::function<void(bool)> completed)
+{
+    if (!_identity) {
+        completed(true);
+        return;
+    }
+    static const QRegularExpression subject(QStringLiteral("^[0-7][0-9A-HJKMNP-TV-Z]{25}$"));
+    if (data.value(QStringLiteral("scope")).toString() != _identity->scopes || accessToken.isEmpty()
+        || data.value(QStringLiteral("token_type")).toString().compare(QStringLiteral("Bearer"), Qt::CaseInsensitive) != 0 || !idToken.isValid()
+        || idToken.toJson().value(QStringLiteral("iss")).toString() != _identity->issuer || !subject.match(idToken.sub()).hasMatch()
+        || !idToken.aud().contains(_clientId) || (_idToken.isValid() && _idToken.sub() != idToken.sub())
+        || !pinnedEndpoint(_userInfoEndpoint, _identity->issuer)) {
+        completed(false);
+        return;
+    }
+    QNetworkRequest request(_userInfoEndpoint);
+    request.setAttribute(HttpCredentials::DontAddCredentialsAttribute, true);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
+    request.setTransferTimeout(defaultTimeoutMs());
+    request.setRawHeader("Authorization", "Bearer " + accessToken.toUtf8());
+    auto *reply = _networkAccessManager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [reply, expected = idToken.sub(), completed = std::move(completed)] {
+        QJsonParseError error;
+        const auto info = QJsonDocument::fromJson(reply->readAll(), &error).object();
+        const bool verified =
+            successfulPinnedReply(reply) && error.error == QJsonParseError::NoError && info.value(QStringLiteral("sub")).toString() == expected;
+        reply->deleteLater();
+        completed(verified);
+    });
+}
 
 void OAuth::setIdToken(IdToken &&idToken)
 {
@@ -249,6 +308,11 @@ QVariantMap OAuth::dynamicRegistrationData() const
 void OAuth::startAuthentication()
 {
     qCDebug(lcOauth) << u"starting authentication";
+
+    if (!identityProfileMatchesServer()) {
+        Q_EMIT result(Error);
+        return;
+    }
 
     // Listen on the socket to get a port which will be used in the redirect_uri
 
@@ -289,7 +353,7 @@ void OAuth::startAuthentication()
                     return;
                 }
 
-                qCDebug(lcOauth) << u"Server provided:" << peek;
+                qCDebug(lcOauth) << u"Received loopback callback";
 
                 const auto getPrefix = QByteArrayLiteral("GET /?");
                 if (!peek.startsWith(getPrefix)) {
@@ -337,8 +401,11 @@ void OAuth::startAuthentication()
                             socket, QStringLiteral("500 Internal Server Error"), tr("Login Error"), tr("<h1>Login Error</h1><p>%1</p>").arg(errorReason));
                         Q_EMIT result(Error);
                     };
-                    if (reply->error() != QNetworkReply::NoError || jsonParseError.error != QJsonParseError::NoError
-                        || !fieldsError.isEmpty()
+                    if (_identity
+                        && (!successfulPinnedReply(reply) || jsonParseError.error != QJsonParseError::NoError || !fieldsError.isEmpty()
+                            || refreshToken.isEmpty() || tokenType != QLatin1String("bearer"))) {
+                        reportError(tr("The token endpoint did not return valid enrollment credentials"));
+                    } else if (reply->error() != QNetworkReply::NoError || jsonParseError.error != QJsonParseError::NoError || !fieldsError.isEmpty()
                         || tokenType != QLatin1String("bearer")) {
                         // do we have error message suitable for users?
                         QString errorReason = data[QStringLiteral("error_description")].toString();
@@ -365,7 +432,7 @@ void OAuth::startAuthentication()
                         reportError(tr("The audience of the id_token did not contain \"%1\"").arg(_clientId));
                     } else if (_idToken.isValid() && _idToken.sub() != idToken.sub()) {
                         // Connected with the wrong user
-                        qCWarning(lcOauth) << u"We expected the user" << _idToken.toJson() << u"but the server answered with user" << idToken.toJson();
+                        qCWarning(lcOauth) << u"The token identifies a different enrolled user";
                         const QString expectedName = !_idToken.preferred_username().isEmpty() ? _idToken.preferred_username() : _idToken.name();
                         const QString actualName = !idToken.preferred_username().isEmpty() ? idToken.preferred_username() : idToken.name();
                         QString message;
@@ -383,8 +450,15 @@ void OAuth::startAuthentication()
                         httpReplyAndClose(socket, QStringLiteral("403 Forbidden"), tr("Incorrect user"), message);
                         Q_EMIT result(Error);
                     } else {
-                        setIdToken(std::move(idToken));
-                        finalize(socket, accessToken, refreshToken, messageUrl);
+                        verifyTokenIdentity(
+                            data, idToken, accessToken, [this, socket, idToken, accessToken, refreshToken, messageUrl, reportError](bool verified) mutable {
+                                if (!verified) {
+                                    reportError(tr("The identity response did not match this companion's enrollment"));
+                                    return;
+                                }
+                                setIdToken(std::move(idToken));
+                                finalize(socket, accessToken, refreshToken, _identity ? QUrl() : messageUrl);
+                            });
                     }
                 });
             });
@@ -408,6 +482,9 @@ void OAuth::finalize(const QPointer<QTcpSocket> &socket, const QString &accessTo
 QNetworkReply *OAuth::postTokenRequest(QUrlQuery &&queryItems)
 {
     QNetworkRequest req;
+    if (_identity) {
+        req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
+    }
     req.setTransferTimeout(defaultTimeoutMs());
     switch (_endpointAuthMethod) {
     case TokenEndpointAuthMethods::client_secret_basic:
@@ -481,6 +558,9 @@ void OAuth::persist(const OCC::AccountPtr &accountPtr, const QVariantMap &dynami
     }
     if (idToken.isValid()) {
         accountPtr->credentialManager()->set(idTokenC(), idToken.toJson());
+        if (const auto profile = Theme::instance()->oauthIdentityProfile()) {
+            accountPtr->setAtumIdentity(idToken.toJson().value(QStringLiteral("iss")).toString(), idToken.sub());
+        }
     } else {
         accountPtr->credentialManager()->clear(idTokenC());
     }
@@ -489,7 +569,7 @@ void OAuth::persist(const OCC::AccountPtr &accountPtr, const QVariantMap &dynami
 void OAuth::updateDynamicRegistration()
 {
     // this slightly complicated construct allows us to log case-specific messages
-    if (!Theme::instance()->oidcEnableDynamicRegistration()) {
+    if (_identity || !Theme::instance()->oidcEnableDynamicRegistration()) {
         qCDebug(lcOauth) << u"dynamic registration disabled by theme";
     } else if (!_registrationEndpoint.isValid()) {
         qCDebug(lcOauth) << u"registration endpoint not provided or empty:" << _registrationEndpoint.toString()
@@ -516,9 +596,17 @@ void OAuth::updateDynamicRegistration()
 
 void OAuth::fetchWellKnown()
 {
+    if (!identityProfileMatchesServer()) {
+        if (_isRefreshingToken) {
+            Q_EMIT refreshError(QNetworkReply::AuthenticationRequiredError, tr("The server does not match the enrolled identity"));
+        } else {
+            Q_EMIT result(Error);
+        }
+        return;
+    }
     const QPair<QString, QString> urls = Theme::instance()->oauthOverrideAuthUrl();
 
-    if (!urls.first.isNull()) {
+    if (!_identity && !urls.first.isNull()) {
         OC_ASSERT(!urls.second.isNull());
         _authEndpoint = QUrl(urls.first);
         _tokenEndpoint = QUrl(urls.second);
@@ -529,6 +617,9 @@ void OAuth::fetchWellKnown()
         Q_EMIT fetchWellKnownFinished();
     } else {
         QNetworkRequest webfingerReq;
+        if (_identity) {
+            webfingerReq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
+        }
         webfingerReq.setAttribute(HttpCredentials::DontAddCredentialsAttribute, true);
         webfingerReq.setUrl(Utility::concatUrlPath(_serverUrl, QStringLiteral("/.well-known/webfinger"),
             {
@@ -549,7 +640,7 @@ void OAuth::fetchWellKnown()
                 }
             };
 
-            if (webfingerReply->error() != QNetworkReply::NoError) {
+            if (webfingerReply->error() != QNetworkReply::NoError || (_identity && !successfulPinnedReply(webfingerReply))) {
                 qCWarning(lcOauth) << "Error getting webfinger:" << webfingerReply->errorString();
                 handleError(webfingerReply->error(), webfingerReply->errorString());
                 return;
@@ -600,6 +691,15 @@ void OAuth::fetchWellKnown()
             }
 
             const auto properties = doc.object().value(QStringLiteral("properties")).toObject();
+            if (_identity) {
+                const auto advertisedScopes = properties.value(QStringLiteral("http://opencloud.eu/ns/oidc/scopes")).toArray();
+                if (issuerUrl != _identity->issuer
+                    || properties.value(QStringLiteral("http://opencloud.eu/ns/oidc/client_id")).toString() != _identity->clientId
+                    || advertisedScopes.size() != 1 || advertisedScopes.at(0).toString() != _identity->scopes) {
+                    handleError(QNetworkReply::AuthenticationRequiredError, tr("Discovery does not match this companion's identity profile"));
+                    return;
+                }
+            }
             if (const auto clientId = properties.value(QStringLiteral("http://opencloud.eu/ns/oidc/client_id")).toString(); !clientId.isNull()) {
                 this->_clientId = clientId;
             }
@@ -626,6 +726,9 @@ void OAuth::fetchWellKnown()
             qCDebug(lcOauth) << u"fetching" << oidcWellKnownUrl;
 
             QNetworkRequest req;
+            if (_identity) {
+                req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
+            }
             req.setAttribute(HttpCredentials::DontAddCredentialsAttribute, true);
             req.setUrl(oidcWellKnownUrl);
             req.setTransferTimeout(defaultTimeoutMs());
@@ -634,7 +737,7 @@ void OAuth::fetchWellKnown()
 
             connect(reply, &QNetworkReply::finished, this, [reply, this, handleError] {
                 _wellKnownFinished = true;
-                if (reply->error() != QNetworkReply::NoError) {
+                if (reply->error() != QNetworkReply::NoError || (_identity && !successfulPinnedReply(reply))) {
                     qCDebug(lcOauth) << u"failed to fetch .well-known reply, error:" << reply->error();
                     handleError(reply->error(), reply->errorString());
                     return;
@@ -644,7 +747,15 @@ void OAuth::fetchWellKnown()
                 if (err.error == QJsonParseError::NoError) {
                     _authEndpoint = QUrl::fromEncoded(data[QStringLiteral("authorization_endpoint")].toString().toUtf8());
                     _tokenEndpoint = QUrl::fromEncoded(data[QStringLiteral("token_endpoint")].toString().toUtf8());
+                    _userInfoEndpoint = QUrl::fromEncoded(data[QStringLiteral("userinfo_endpoint")].toString().toUtf8());
                     _registrationEndpoint = QUrl::fromEncoded(data[QStringLiteral("registration_endpoint")].toString().toUtf8());
+
+                    if (_identity
+                        && (data.value(QStringLiteral("issuer")).toString() != _identity->issuer || !pinnedEndpoint(_authEndpoint, _identity->issuer)
+                            || !pinnedEndpoint(_tokenEndpoint, _identity->issuer) || !pinnedEndpoint(_userInfoEndpoint, _identity->issuer))) {
+                        handleError(QNetworkReply::AuthenticationRequiredError, tr("OIDC discovery does not match the pinned issuer"));
+                        return;
+                    }
 
                     if (_clientSecret.isEmpty()) {
                         _endpointAuthMethod = TokenEndpointAuthMethods::none;
@@ -729,8 +840,8 @@ void OAuth::openBrowser()
     }
 }
 
-AccountBasedOAuth::AccountBasedOAuth(AccountPtr account, QObject *parent)
-    : OAuth(account->url(), account->accessManager(), {}, parent)
+AccountBasedOAuth::AccountBasedOAuth(AccountPtr account, QObject *parent, std::optional<OAuthIdentityProfile> identity)
+    : OAuth(account->url(), account->accessManager(), {}, parent, std::move(identity))
     , _account(account)
 {
     connect(this, &AccountBasedOAuth::result, this, [account, this](OAuth::Result result, const QString &, const QString &) {
@@ -752,6 +863,10 @@ void AccountBasedOAuth::startAuthentication()
 
 void AccountBasedOAuth::fetchWellKnown()
 {
+    if (!identityProfileMatchesServer()) {
+        OAuth::fetchWellKnown();
+        return;
+    }
     qCDebug(lcOauth) << u"starting CheckServerJob before fetching" << wellKnownPathC;
 
     auto *checkServerJob = CheckServerJobFactory::createFromAccount(_account, true, this).startJob(_serverUrl, this);
@@ -821,6 +936,10 @@ void AccountBasedOAuth::refreshAuthentication(const QString &refreshToken)
                     QString newRefreshToken = refreshToken;
                     // https://developer.okta.com/docs/reference/api/oidc/#response-properties-2
                     const QString errorString = data.value(QStringLiteral("error")).toString();
+                    if (_identity && !errorString.isEmpty()) {
+                        Q_EMIT refreshError(QNetworkReply::AuthenticationRequiredError, tr("The pinned issuer refused credential refresh"));
+                        return;
+                    }
                     if (!errorString.isEmpty()) {
                         if (errorString == QLatin1String("invalid_grant") || errorString == QLatin1String("invalid_request")) {
                             newRefreshToken.clear();
@@ -852,7 +971,32 @@ void AccountBasedOAuth::refreshAuthentication(const QString &refreshToken)
                             }
                         }
                     }
-                    Q_EMIT refreshFinished(accessToken, newRefreshToken);
+                    if (_identity) {
+                        IdToken candidate = idToken();
+                        if (data.contains(QStringLiteral("id_token"))) {
+                            const JWT jwt(data.value(QStringLiteral("id_token")).toByteArray());
+                            if (!jwt.isValid()) {
+                                Q_EMIT refreshError(QNetworkReply::AuthenticationRequiredError, tr("Invalid refreshed identity"));
+                                return;
+                            }
+                            candidate = IdToken(jwt.payload());
+                        }
+                        if (!successfulPinnedReply(reply) || !data.contains(QStringLiteral("refresh_token")) || newRefreshToken.isEmpty()
+                            || newRefreshToken == refreshToken) {
+                            Q_EMIT refreshError(QNetworkReply::AuthenticationRequiredError, tr("Refresh did not return a new credential"));
+                            return;
+                        }
+                        verifyTokenIdentity(data, candidate, accessToken, [this, candidate, accessToken, newRefreshToken](bool verified) mutable {
+                            if (!verified) {
+                                Q_EMIT refreshError(QNetworkReply::AuthenticationRequiredError, tr("Refreshed identity does not match enrollment"));
+                                return;
+                            }
+                            setIdToken(std::move(candidate));
+                            Q_EMIT refreshFinished(accessToken, newRefreshToken);
+                        });
+                    } else {
+                        Q_EMIT refreshFinished(accessToken, newRefreshToken);
+                    }
                 });
             });
             updateDynamicRegistration();

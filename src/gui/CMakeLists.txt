@@ -39,6 +39,7 @@ target_sources(OpenCloudGui PRIVATE
     fetchserversettings.cpp
     commonstrings.cpp
     connectionvalidator.cpp
+    atumrootbinding.cpp
     folder.cpp
     folderdefinition.cpp
     folderman.cpp

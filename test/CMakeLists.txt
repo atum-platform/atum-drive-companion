@@ -72,6 +72,8 @@ endif(UNIX AND NOT APPLE)
 opencloud_add_test(LongPath)
 
 opencloud_add_test(FolderMan)
+opencloud_add_test(AtumRootBinding)
+opencloud_add_test(AtumRootFolder)
 
 opencloud_add_test(OAuth)
 

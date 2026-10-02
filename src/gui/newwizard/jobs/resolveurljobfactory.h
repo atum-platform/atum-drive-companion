@@ -15,14 +15,19 @@
 #pragma once
 
 #include "abstractcorejob.h"
+#include "gui/opencloudguilib.h"
+#include "theme.h"
 
 namespace OCC::Wizard::Jobs {
 
-class ResolveUrlJobFactory : public AbstractCoreJobFactory
+class OPENCLOUD_GUI_EXPORT ResolveUrlJobFactory : public AbstractCoreJobFactory
 {
 public:
-    explicit ResolveUrlJobFactory(QNetworkAccessManager *nam);
+    explicit ResolveUrlJobFactory(QNetworkAccessManager *nam, std::optional<OAuthIdentityProfile> identity = std::nullopt);
 
     CoreJob *startJob(const QUrl &url, QObject *parent) override;
+
+private:
+    const std::optional<OAuthIdentityProfile> _identity;
 };
 }
