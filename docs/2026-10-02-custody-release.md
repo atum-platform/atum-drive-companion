@@ -84,7 +84,7 @@ after secure storage succeeds. Files are never removed by these paths.
 Focused verification includes controlled failure/order jobs and the existing
 real QKeychain path. No production plaintext fallback is enabled. The isolated
 build configured and compiled successfully with Qt 6.11.1/QtKeychain 0.16.0 and
-the restored vendor shelf. The final native suite has 15 passes, zero failures
+the restored vendor shelf. The final native suite has 16 passes, zero failures
 and zero skips, including real secure-store write/read/corrupt-read/delete,
 write/delete timeout fences and both late-write/delete orderings. The OAuth
 suite has 17 passes, zero failures and zero skips, including lost/rejected
@@ -108,3 +108,42 @@ controlled-job seam is private/friend-only; the runtime always starts real
 QKeychain jobs with insecure fallback disabled. Preserve LICENSE/COPYING and
 upstream attribution when packaging. Signing/release and two-Mac acceptance
 remain unclaimed.
+
+
+## Independent custody source review
+
+Primary assembly job `7ea130ac-c788-4f9a-be74-87c80b4f555a`, decision
+`af7db308-5c8e-4674-b95f-c91cc238b9fe`, returned SHIP for custody source with
+no blocking defects. Complete retained result was read, acknowledged and routing
+feedback closed. The nonblocking logout ordering finding was confirmed: queue
+blocking still happens immediately, then forgetSensitiveData writes its durable
+cleanup fence before publishing SignedOut. The redundant earlier SignedOut call
+was removed. Existing account-removal orphan cleanup, exact-key OAuth clearing
+and force-sync UI gating remain retained pre-existing follow-ups; no release or
+full account-switch acceptance is inferred. No second review was launched.
+
+The reviewed correction has a real AccountState regression test: its SignedOut
+notification observes the durable deletion fence, and reconnect remains blocked
+until the deletion acknowledgement. The rebuilt native custody suite passed all
+16 cases without skips; the OAuth suite passed all 17 cases. Changed C++ lines
+were formatted with the repository's clang-format 19 convention, and the changed
+QML file with the restored SDK's qmlformat. These checks cover the final source.
+
+A separate real unchanged SyncJournalDb baseline confirms upstream SQLite
+exclusive ownership blocks a same-path or symlink-alias process while the owner
+lives. Each case independently recovers after killing only its generated owner,
+and retains the generated local edit. Repeating the proof with two simultaneous
+waiters timed out after owner death: they can remain mutually busy, so concurrent
+recovery is not proved. The earlier preliminary receipt overstated that recovery
+scope; the committed reproducible receipt supersedes it. No new journal lock is
+justified for exclusion, but the Desktop update path must serialize ownership
+transfer before two waiting clients can enter. Full binding/update-overlap
+acceptance remains separate.
+
+The reproducible manual proof is `test/manual/journal-exclusion`: configure its
+CMake project with the restored Qt SDK, COMPANION_SOURCE pointing to this checkout
+and COMPANION_BUILD pointing to the built Desktop tree, build `journal-probe`, then
+run `python3 test/manual/journal-exclusion/prove.py <built-journal-probe>`. It links
+the real companion library, uses only generated temporary data and kills only its
+own owner process. Its JSON receipt distinguishes this proof from full Desktop
+acceptance.

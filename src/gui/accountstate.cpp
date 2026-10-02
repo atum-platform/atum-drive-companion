@@ -22,8 +22,8 @@
 #include "guiutility.h"
 
 #include "libsync/creds/abstractcredentials.h"
-#include "libsync/creds/httpcredentials.h"
 #include "libsync/creds/credentialmanager.h"
+#include "libsync/creds/httpcredentials.h"
 
 #include "gui/folderman.h"
 #include "gui/fonticonmessagebox.h"
@@ -308,7 +308,6 @@ bool AccountState::isSignedOut() const
 void AccountState::signOutByUi()
 {
     _queueGuard.block();
-    setState(SignedOut);
     account()->credentials()->forgetSensitiveData();
     account()->clearCookieJar();
     setState(SignedOut);

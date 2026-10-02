@@ -11,8 +11,8 @@
 #include <QLoggingCategory>
 #include <QTimer>
 
-#include <chrono>
 #include <algorithm>
+#include <chrono>
 
 using namespace std::chrono_literals;
 
@@ -78,7 +78,7 @@ QKeychain::Job *CredentialManager::set(const QString &key, const QVariant &data)
     _writes.insert(key, writeJob);
     if (_account) {
         // Custody cleanup must outlive a cancelled enrollment window.
-        connect(writeJob, &QKeychain::Job::finished, writeJob, [account = _account->sharedFromThis()] {});
+        connect(writeJob, &QKeychain::Job::finished, writeJob, [account = _account->sharedFromThis()] { });
     }
 
     auto timer = new QTimer(writeJob);
@@ -142,7 +142,7 @@ QKeychain::Job *CredentialManager::remove(const QString &key)
     keychainJob->setKey(binding() + QLatin1Char(':') + key);
     _deletes.insert(key, keychainJob);
     if (_account) {
-        connect(keychainJob, &QKeychain::Job::finished, keychainJob, [account = _account->sharedFromThis()] {});
+        connect(keychainJob, &QKeychain::Job::finished, keychainJob, [account = _account->sharedFromThis()] { });
     }
     auto timer = new QTimer(keychainJob);
     timer->setSingleShot(true);
@@ -203,8 +203,8 @@ const Account *CredentialManager::account() const
 
 bool CredentialManager::contains(const QString &key) const
 {
-    return credentialsList().contains(key) && !hasPendingOperation(key)
-        && credentialsList().status() == QSettings::NoError && operations().status() == QSettings::NoError;
+    return credentialsList().contains(key) && !hasPendingOperation(key) && credentialsList().status() == QSettings::NoError
+        && operations().status() == QSettings::NoError;
 }
 
 QStringList CredentialManager::knownKeys(const QString &group) const
@@ -267,9 +267,8 @@ QStringList CredentialManager::pendingKeys() const
 bool CredentialManager::hasPendingDeletion() const
 {
     const auto keys = pendingKeys();
-    return std::any_of(keys.cbegin(), keys.cend(), [this](const QString &key) {
-        return operations().value(QStringLiteral("pending/") + key) == QStringLiteral("delete");
-    });
+    return std::any_of(
+        keys.cbegin(), keys.cend(), [this](const QString &key) { return operations().value(QStringLiteral("pending/") + key) == QStringLiteral("delete"); });
 }
 
 bool CredentialManager::deletionFailed() const
@@ -279,8 +278,7 @@ bool CredentialManager::deletionFailed() const
     }
     const auto keys = pendingKeys();
     return std::any_of(keys.cbegin(), keys.cend(), [this](const QString &key) {
-        return operations().value(QStringLiteral("pending/") + key) == QStringLiteral("delete")
-            && operations().value(QStringLiteral("failed/") + key).toBool();
+        return operations().value(QStringLiteral("pending/") + key) == QStringLiteral("delete") && operations().value(QStringLiteral("failed/") + key).toBool();
     });
 }
 

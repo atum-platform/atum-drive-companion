@@ -1,16 +1,16 @@
 #pragma once
 
-#include <QSettings>
-#include <QVariant>
 #include <QHash>
 #include <QSet>
+#include <QSettings>
+#include <QVariant>
 
 #include "opencloudsynclib.h"
 
 #include <qt6keychain/keychain.h>
 
-#include <memory>
 #include <functional>
+#include <memory>
 
 namespace OCC {
 class Account;

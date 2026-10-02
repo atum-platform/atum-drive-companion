@@ -8,8 +8,8 @@
 #include <QDesktopServices>
 
 #include "common/asserts.h"
-#include "libsync/creds/httpcredentials.h"
 #include "libsync/creds/credentialmanager.h"
+#include "libsync/creds/httpcredentials.h"
 #include "libsync/creds/oauth.h"
 #include "testutils/syncenginetestutils.h"
 #include "theme.h"

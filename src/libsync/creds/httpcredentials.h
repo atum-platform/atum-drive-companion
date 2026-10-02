@@ -25,7 +25,9 @@
 
 class QNetworkReply;
 class QAuthenticator;
-namespace QKeychain { class Job; }
+namespace QKeychain {
+class Job;
+}
 
 namespace OCC {
 class OAuth;

@@ -79,8 +79,7 @@ Pane {
                     }
 
                     MenuItem {
-                        text: accountSettings.accountState.credentialCleanupFailed ? qsTr("Retry credential cleanup")
-                            : accountSettings.accountState.state === AccountState.SignedOut ? qsTr("Log in") : qsTr("Log out")
+                        text: accountSettings.accountState.credentialCleanupFailed ? qsTr("Retry credential cleanup") : accountSettings.accountState.state === AccountState.SignedOut ? qsTr("Log in") : qsTr("Log out")
                         enabled: !accountSettings.accountState.credentialCleanupPending || accountSettings.accountState.credentialCleanupFailed
                         onTriggered: accountSettings.slotToggleSignInState()
                     }

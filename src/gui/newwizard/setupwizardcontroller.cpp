@@ -1,5 +1,6 @@
 #include "setupwizardcontroller.h"
 
+#include "creds/httpcredentials.h"
 #include "gui/application.h"
 #include "gui/folderman.h"
 #include "pages/accountconfiguredwizardpage.h"
@@ -8,7 +9,6 @@
 #include "states/oauthcredentialssetupwizardstate.h"
 #include "states/serverurlsetupwizardstate.h"
 #include "theme.h"
-#include "creds/httpcredentials.h"
 
 using namespace std::chrono_literals;
 

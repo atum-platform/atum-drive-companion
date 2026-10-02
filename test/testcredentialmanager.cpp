@@ -5,6 +5,7 @@
  *
  */
 #include "account.h"
+#include "accountstate.h"
 #include "libsync/creds/credentialmanager.h"
 #include "libsync/creds/httpcredentials.h"
 #include "theme.h"
@@ -156,7 +157,7 @@ private Q_SLOTS:
 
     void testReadyWaitsForSecureWrite()
     {
-        FakeFolder folder { FileInfo::A12_B12_C12_S12() };
+        FakeFolder folder{FileInfo::A12_B12_C12_S12()};
         auto account = folder.account();
         auto manager = account->credentialManager();
         QVector<QKeychain::Job *> jobs;
@@ -189,7 +190,7 @@ private Q_SLOTS:
 
     void testWriteFailureStaysUnreadyAndRetainsFiles()
     {
-        FakeFolder folder { FileInfo::A12_B12_C12_S12() };
+        FakeFolder folder{FileInfo::A12_B12_C12_S12()};
         auto manager = folder.account()->credentialManager();
         QVector<QKeychain::Job *> jobs;
         manager->_startJob = [&jobs](QKeychain::Job *job) { jobs.append(job); };
@@ -222,7 +223,7 @@ private Q_SLOTS:
 
     void testRotationFenceSurvivesRestart()
     {
-        FakeFolder folder { FileInfo::A12_B12_C12_S12() };
+        FakeFolder folder{FileInfo::A12_B12_C12_S12()};
         auto manager = folder.account()->credentialManager();
         const auto key = QStringLiteral("http/oauthtoken");
         manager->credentialsList().setValue(key, true);
@@ -242,7 +243,7 @@ private Q_SLOTS:
 
     void testDeletionFailureRetainsFenceAndRetriesSameBinding()
     {
-        FakeFolder folder { FileInfo::A12_B12_C12_S12() };
+        FakeFolder folder{FileInfo::A12_B12_C12_S12()};
         auto manager = folder.account()->credentialManager();
         const auto key = QStringLiteral("http/oauthtoken");
         manager->credentialsList().setValue(key, true);
@@ -271,7 +272,7 @@ private Q_SLOTS:
 
     void testLateWriteAfterLogoutCannotResurrectCredentials()
     {
-        FakeFolder folder { FileInfo::A12_B12_C12_S12() };
+        FakeFolder folder{FileInfo::A12_B12_C12_S12()};
         auto manager = folder.account()->credentialManager();
         QVector<QKeychain::Job *> jobs;
         manager->_startJob = [&jobs](QKeychain::Job *job) { jobs.append(job); };
@@ -292,9 +293,37 @@ private Q_SLOTS:
         QVERIFY(manager->knownKeys().isEmpty());
     }
 
+    void testSignedOutNotificationFollowsDurableCleanupFence()
+    {
+        FakeFolder folder{FileInfo::A12_B12_C12_S12()};
+        auto account = folder.account();
+        auto manager = account->credentialManager();
+        manager->credentialsList().setValue(QStringLiteral("http/oauthtoken"), true);
+        QVector<QKeychain::Job *> jobs;
+        manager->_startJob = [&jobs](QKeychain::Job *job) { jobs.append(job); };
+        account->setCredentials(new CustodyHttpCredentials(QStringLiteral("synthetic-access"), QStringLiteral("synthetic-refresh")));
+        auto state = AccountState::fromNewAccount(account);
+        bool fencedAtNotification = false;
+        connect(state.get(), &AccountState::stateChanged, this, [&fencedAtNotification, manager](AccountState::State value) {
+            if (value == AccountState::SignedOut) {
+                fencedAtNotification = manager->hasPendingDeletion() && !manager->contains(QStringLiteral("http/oauthtoken"));
+            }
+        });
+        state->signOutByUi();
+        QVERIFY(fencedAtNotification);
+        QVERIFY(state->credentialCleanupPending());
+        state->signIn();
+        QVERIFY(state->isSignedOut());
+        QCOMPARE(jobs.size(), 1);
+        jobs[0]->emitFinished();
+        QVERIFY(!state->credentialCleanupPending());
+        state->signIn();
+        QVERIFY(!state->isSignedOut());
+    }
+
     void testWriteTimeoutFencesLateSuccess()
     {
-        FakeFolder folder { FileInfo::A12_B12_C12_S12() };
+        FakeFolder folder{FileInfo::A12_B12_C12_S12()};
         auto manager = folder.account()->credentialManager();
         QVector<QKeychain::Job *> jobs;
         manager->_startJob = [&jobs](QKeychain::Job *job) { jobs.append(job); };
@@ -324,7 +353,7 @@ private Q_SLOTS:
 
     void testDeleteTimeoutStaysFencedUntilAcknowledgement()
     {
-        FakeFolder folder { FileInfo::A12_B12_C12_S12() };
+        FakeFolder folder{FileInfo::A12_B12_C12_S12()};
         auto manager = folder.account()->credentialManager();
         const auto key = QStringLiteral("http/oauthtoken");
         manager->credentialsList().setValue(key, true);
@@ -352,7 +381,7 @@ private Q_SLOTS:
         if (!QKeychain::isAvailable()) {
             QSKIP("Real OS keychain unavailable.");
         }
-        FakeFolder folder { FileInfo::A12_B12_C12_S12() };
+        FakeFolder folder{FileInfo::A12_B12_C12_S12()};
         auto manager = folder.account()->credentialManager();
         const auto key = QStringLiteral("custody/corrupt");
         auto write = manager->set(key, QStringLiteral("disposable"));
@@ -365,9 +394,7 @@ private Q_SLOTS:
         auto read = manager->get(key);
         QSignalSpy fetched(read, &CredentialJob::finished);
         bool failed = false;
-        connect(read, &CredentialJob::finished, this, [read, &failed] {
-            failed = read->error() == QKeychain::OtherError && !read->data().isValid();
-        });
+        connect(read, &CredentialJob::finished, this, [read, &failed] { failed = read->error() == QKeychain::OtherError && !read->data().isValid(); });
         QVERIFY(fetched.wait(30000));
         QCOMPARE(fetched.count(), 1);
         QVERIFY(failed);
@@ -382,7 +409,7 @@ private Q_SLOTS:
         if (!QKeychain::isAvailable()) {
             QSKIP("Real OS keychain unavailable; controlled custody seam tests still run.");
         }
-        FakeFolder folder { FileInfo::A12_B12_C12_S12() };
+        FakeFolder folder{FileInfo::A12_B12_C12_S12()};
         auto manager = folder.account()->credentialManager();
         const auto key = QStringLiteral("custody/synthetic");
         QSignalSpy stored(manager, &CredentialManager::writeFinished);
