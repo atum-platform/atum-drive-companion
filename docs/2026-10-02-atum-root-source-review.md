@@ -62,5 +62,3 @@ Only `dbIsTooNew` softened for Atum. If `qFatal` on missing account/plugin remai
 Binding/owner-replacement/no-unlink + pinned-transport no-header/body/redirect/TLS-exception are proven by real tests. But the actual journal open/read/mutation + removal/sign-out + single-personal enrollment in `FolderMan`/`Folder` — the first-slice product path — is compiled-only with duplicate-definition, definition-deletion, re-enroll-guard, spaces-count-on-resume, and `loadFolders` crash-preservation gaps above. Fix P0s + add live Folder open/resume/removal real-I/O proof, then re-review.
 
 Explicitly open (not counted as done): signed release, full nonempty adoption/inventory UX, RT lifecycle interface, release-pin reconciliation, full two-Mac G8, 72h acceptance.
-
-

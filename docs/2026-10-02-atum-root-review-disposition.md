@@ -76,6 +76,16 @@ The locally built isolated S2 app launch was rejected by automatic approval
 review because computer-use policy requires action-time confirmation for this
 temporary source build. Owner approval is pending; no launch took place.
 
+The candidate integrates origin/main custody merge bdf69050. Hosted PR CI retains
+the four unbranded regression/build lanes and the previously approved Linux
+Secret Service setup. After its generic package is prepared, the Linux PR lane
+reconfigures its build with the checked-in immutable S2 theme and runs only
+testatumrootbinding/testatumrootfolder. It retains a JUnit receipt with the
+generic artifacts. No signing, deployment, Actions allowlist or production
+setting is enabled. This closes the gap where the Folder suite's explicit
+unbranded skip could otherwise be the only hosted evidence. The new hosted step
+is prepared but cannot run before approved public publication.
+
 Apple iconutil cannot access its converter service inside the build sandbox:
 the same local iconset succeeds outside it. Native builds use that observed
 requirement. No icon pixels, production source, signing settings or action

@@ -9,6 +9,15 @@ store/read/delete preflight. The directory and daemon are cleaned on exit;
 only synthetic test entries use it. No production fallback or test skip was
 added. Local bash syntax/diff checks precede a new exact-head hosted run.
 
+Run 37003038322 at bbe2fcb failed at the new Secret Service bootstrap before
+tests; other matrix jobs were cancelled by fail-fast. The daemon's diagnostic
+was inside its disposable directory and absent from Actions output. The wrapper
+now emits its test-only daemon error on failure, and a Linux preflight runs
+before the lengthy Craft dependency/build stage. No failed check is treated as
+passing and no unchanged-code rerun was requested. Local Linux probes were
+unavailable: Mini Docker has no daemon socket, rpi SSH is down, and the asus
+alias does not resolve on this host. Hosted diagnostics remain the actual lane.
+
 Owner scope: finish cloud agents, Atum Drive and cloud execution. This independently
 packaged GPL-2.0-or-later fork contains no Atum proprietary code. Baseline source
 9bf87d5ea35b847a40dd7370fcfe104313150da4; custody source and focused native tests are complete; signed release
@@ -167,3 +176,30 @@ scheduled release trigger is removed: this repository does not schedule vendor
 signing or releases. Normal PR validation still uses the existing hosted Linux,
 macOS and Windows build/test matrix. Required current-head checks must be observed
 before merging; an empty check list is not a passing result.
+
+The fork-specific workflow gate was enabled by the owner without changing the
+action allowlist. Linux then exposed a missing real Secret Service. The fixture
+now creates a private temporary D-Bus/keyring environment and exercises real
+write/read/delete before tests, rather than enabling plaintext fallback. Runs
+37003038322 and 37006016763 failed at this preflight. The latter retained the
+concrete error: `/usr/bin/gnome-keyring-daemon: Operation not permitted`, before
+the daemon started. The likely cause is Alma's executable CAP_IPC_LOCK outside
+the hosted container's capability bounding set. The fixture logs getcap output
+and installs a private copy without extended attributes/file capabilities; the
+system daemon and container permissions are unchanged. The copy handles only
+generated synthetic credentials and is removed by the fixture's existing trap.
+`bash -n` and `git diff --check` pass locally. The next exact-head hosted run must
+confirm the diagnosis and execute the real custody tests before merge.
+
+Run 37007005533 confirmed `/usr/bin/gnome-keyring-daemon cap_ipc_lock=ep`.
+The private copy executed, but GNOME 40.0 then aborted while dropping capabilities
+with `error dropping process capabilities - -5`. Its
+[upstream implementation](https://github.com/GNOME/gnome-keyring/blob/40.0/daemon/gkd-capability.c)
+requires IPC_LOCK even in this root container path. The copy approach is removed:
+the Linux job container now has only the additional `--cap-add=IPC_LOCK`, and
+runs the original packaged daemon. No privileged mode, host mount, action
+allowlist change, product credential fallback or skip is introduced. The private
+synthetic keyring, preflight write/read/delete and cleanup remain required.
+The Linux container declaration uses the supported image/options form from
+[GitHub workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idcontaineroptions).
+The superseding exact-head run must pass preflight and real tests before merge.
