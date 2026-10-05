@@ -15,7 +15,10 @@ it and talks to it over standard input and output.
 | Source revision | `0b4bf330a0f8e4a2134785844fde69f66e6d04e9` (Atum's internal revision id; it is the `sourceCommit` field of `Contents/Resources/drive-engine/manifest.json` in the app) |
 | Upstream base | OpenCloud Desktop v4.0.0, commit `9f701e6db2e101cb3247d3331647a60266e83b0f`, https://github.com/opencloud-eu/desktop |
 
-This commit contains exactly the source tree of that revision, plus this file.
+The tag `drive-engine-0.18` (commit `7f3037af2a159e5f19e1eea9aac0fb96f209e117`)
+holds exactly the source tree of that revision, plus this file. This file on
+`main` is the current version of these instructions: it corrects and extends
+the copy in the tag.
 
 To check which engine your copy of Atum contains, open
 `Contents/Resources/drive-engine/manifest.json` inside the app and read
@@ -154,20 +157,155 @@ certificate and is not part of the source. An ad-hoc signed build
 
 ## Third-party components
 
-The engine bundle also contains unmodified third-party libraries built by KDE
-Craft from the recipes pinned in `.craft.shelf`: Qt, QtKeychain,
-KDSingleApplication, libre-graph-api-cpp-qt-client, OpenSSL, ICU, GLib, gettext
-(libintl), FreeType, HarfBuzz, libpng, PCRE2, Brotli, bzip2, libb2, zlib,
-Zstandard (zstd) and SQLite. Each keeps its own licence; Qt, GLib and libintl are under the LGPL. Their source
-is available from each project and through the Craft blueprints at the revisions
-in `.craft.shelf`. For a copy of the source of any of them as shipped, write to
-support@atumplatform.com.
+### Libraries in the engine bundle
+
+The engine bundle also contains third-party libraries, built by KDE Craft from
+the recipes pinned in `.craft.shelf`: Qt, QtKeychain, KDSingleApplication,
+libre-graph-api-cpp-qt-client, OpenSSL, ICU, GLib, gettext (libintl),
+FreeType, HarfBuzz, libpng, PCRE2, Brotli, bzip2, libb2, zlib, Zstandard
+(zstd) and SQLite. Each keeps its own licence. Qt, GLib and libintl are under
+the GNU Lesser General Public License (LGPL).
+
+Craft patches some of these libraries before building them:
+
+- **Qt 6.11.1.** Craft applies the patches in `libs/qt6/qtbase/.craft` of
+  craft-blueprints-kde at revision `11b07503ab24e84affc5ed9c94093f8b03b05fd4`
+  (the revision in `.craft.shelf`) to qtbase:
+  `0001-Implement-QTEST_MAX_WARNINGS.patch`,
+  `qstandardpaths-extra-dirs-macos.diff` and
+  `qstandardpaths-fix-genericdatalocation.diff`. The shipped QtCore therefore
+  differs from upstream Qt. qtdeclarative is built without changes.
+- **gettext 0.22.3.** Craft's recipe applies four patches. They change
+  gettext-tools and the top-level build files, not the libintl sources that
+  the engine ships.
+- **GLib 2.86.0.** Built without changes.
+
+### Exact sources of the LGPL libraries
+
+The exact sources of Qt, GLib and libintl as shipped, with the Craft recipes
+and patches that built them, are assets of the
+[`drive-engine-0.18` release](https://github.com/atum-platform/atum-drive-companion/releases/tag/drive-engine-0.18):
+
+| Asset | SHA-256 |
+|---|---|
+| `qtbase-everywhere-src-6.11.1.tar.xz` | `d9594a31228aa23ad6b531719a29b45f0f3989fe6c136d45767ea179f233c1ac` |
+| `qtdeclarative-everywhere-src-6.11.1.tar.xz` | `52e670f670b0304f534b24f98c47ceb8a41bb710464414ebc9527ec71cc86aa4` |
+| `qt-6.11.1-craft-recipes-11b07503.tar.gz` | `67b8d33490c4e92906df220d8f21fdf42417a9f0a2fc0802a5fab7e4cf56cd2a` |
+| `glib-2.86.0.tar.xz` | `b5739972d737cfb0d6fd1e7f163dfe650e2e03740bb3b8d408e4d1faea580d6d` |
+| `gettext-0.22.3.tar.gz` | `839a260b2314ba66274dae7d245ec19fce190a3aa67869bf31354cb558df42c7` |
+| `glib-2.86.0-gettext-0.22.3-craft-recipes.tar.gz` | `864024f45d730b6a92d74748044c41a3e479e35f4522228744abe6f6dcc54d58` |
+
+The Qt and GLib tarballs are byte for byte the files their projects publish
+(download.qt.io and download.gnome.org) and match the SHA-256 values published
+there. The gettext tarball is the one on ftp.gnu.org; GNU's signature for it,
+`gettext-0.22.3.tar.gz.sig`, is beside it in the release and verifies against
+the GNU keyring. Each recipe archive has a `README-ATUM.txt` saying which of
+its patches apply. `SHA256SUMS.txt` in the release lists all six files. The
+source of every other library is available from its project at the version in
+`.craft.shelf`.
+
+### Written offer
+
+For at least three years after Atum last distributes a release that contains
+this engine, Anka Ventures Vietnam Company Limited, the maker of Atum, will
+give anyone who asks a complete, machine-readable copy of the corresponding
+source of the engine and of every library in it, on a medium customarily used
+for software interchange, for a charge no more than our cost of physically
+performing the distribution. Write to support@atumplatform.com.
+
+### Code inside the engine's own libraries
+
+The engine source includes, under their own licences:
+
+- `src/3rdparty/QProgressIndicator`: QProgressIndicator, MIT, copyright (c)
+  2011 Morgan Leborgne. Built into `libOpenCloudGui`.
+- `src/resources/font-awesome`: the Font Awesome 7 Free Solid font, version
+  7.3.1, under the SIL Open Font License 1.1 (`LICENSE.txt` in that folder).
+  Embedded in `libOpenCloudResources`.
+- `src/resources/remixicon`: the Remix Icon font, version 4.6, under the
+  Apache License 2.0 (`License.txt` in that folder). Embedded in
+  `libOpenCloudResources`.
+
+## Replacing Qt, GLib or libintl in your copy of Atum
+
+Qt, GLib and libintl are separate dynamic libraries inside
+`AtumDriveEngine.app/Contents/Frameworks`. You may replace them with your own
+interface-compatible builds, for example ones built from the sources above.
+
+Atum checks the engine before it starts it.
+`Contents/Resources/drive-engine/manifest.json` in the app records the SHA-256
+of the engine executable (`sha256`) and a digest of every file in the engine
+bundle (`bundleSha256`). Atum does not start an engine that does not match.
+So after you replace a library, re-sign the engine, record its new hashes,
+then re-sign Atum:
+
+```sh
+# The Atum app as Terminal names it. For the 0.18 releases this is
+# "/Applications/Atum Matrix Candidate.app" (Finder shows it as Atum).
+APP="/Applications/Atum Matrix Candidate.app"
+ENGINE="$APP/Contents/Resources/drive-engine"
+
+# 1. Replace the library. For example, QtCore:
+cp /path/to/your/QtCore \
+  "$ENGINE/AtumDriveEngine.app/Contents/Frameworks/QtCore.framework/Versions/A/QtCore"
+
+# 2. Re-sign the engine ad hoc. Its Developer ID signature no longer matches.
+codesign --force --deep --sign - "$ENGINE/AtumDriveEngine.app"
+
+# 3. Record the engine's new hashes in manifest.json.
+python3 - "$ENGINE" <<'EOF'
+import hashlib, json, os, sys
+engine = os.path.realpath(sys.argv[1])
+manifest_file = os.path.join(engine, "manifest.json")
+manifest = json.load(open(manifest_file))
+bundle = os.path.join(engine, manifest["binary"].split("/")[0])
+digest = hashlib.sha256()
+def walk(folder):
+    for name in sorted(os.listdir(folder)):
+        path = os.path.join(folder, name)
+        rel = os.path.relpath(path, bundle)
+        if os.path.islink(path):
+            entry = [rel, "link", os.readlink(path)]
+        elif os.path.isdir(path):
+            walk(path)
+            continue
+        else:
+            entry = [rel, "file", hashlib.sha256(open(path, "rb").read()).hexdigest()]
+        digest.update((json.dumps(entry, separators=(",", ":"), ensure_ascii=False) + "\n").encode())
+walk(bundle)
+binary = hashlib.sha256(open(os.path.join(engine, manifest["binary"]), "rb").read()).hexdigest()
+manifest["sha256"] = manifest["binarySha256"] = binary
+manifest["bundleSha256"] = digest.hexdigest()
+json.dump(manifest, open(manifest_file, "w"), indent=2)
+print("sha256", binary)
+print("bundleSha256", manifest["bundleSha256"])
+EOF
+
+# 4. Re-sign Atum ad hoc, since its contents changed.
+codesign --force --deep --sign - "$APP"
+```
+
+`bundleSha256` is the SHA-256 of one JSON line per file or symbolic link in the
+engine bundle, walking the bundle depth first with the entries of each folder
+in sorted order: `[path,"file",<SHA-256 of the file>]` or
+`[path,"link",<link target>]`, with paths relative to `AtumDriveEngine.app`.
+Step 3 computes it the same way Atum does.
+
+A copy changed this way is no longer signed by Atum, so macOS treats it as a
+different app. It may ask again before Atum or the engine can read their
+keychain items, and Atum's automatic updates may not install over it.
+Reinstalling Atum from https://atumplatform.com restores the original.
 
 ## Licence
 
 OpenCloud Desktop and the Atum changes to it are licensed under the GNU General
 Public License, version 2 or (at your option) any later version. See `COPYING`.
-The Atum artwork in `oem/atum/` and its generator are CC0-1.0.
+The engine as Atum distributes it links Qt (LGPL-3.0) and OpenSSL 3
+(Apache-2.0), which are compatible with version 3 of the GPL but not with
+version 2. Atum therefore distributes the engine binary under the GNU General
+Public License, version 3, as the "any later version" option allows. The
+source itself stays under GPL-2.0-or-later. The Atum artwork in `oem/atum/` and
+its generator are CC0-1.0.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
