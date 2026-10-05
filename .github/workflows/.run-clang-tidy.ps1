@@ -43,6 +43,20 @@ foreach ($run in $sarif.runs) {
                 $loc.physicalLocation.artifactLocation.uri = $loc.physicalLocation.artifactLocation.uri -replace "^$([regex]::Escape($workspacePrefix))", ""
             }
         }
+        # clang-tidy-sarif can repeat a note (for example one reached through two
+        # includes); SARIF requires relatedLocations to be unique, and the upload
+        # rejects the whole file otherwise.
+        if ($result.relatedLocations) {
+            $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+            $unique = @()
+            foreach ($related in $result.relatedLocations) {
+                $key = $related | ConvertTo-Json -Depth 100 -Compress
+                if ($seen.Add($key)) {
+                    $unique += $related
+                }
+            }
+            $result.relatedLocations = $unique
+        }
     }
 }
 $sarif | ConvertTo-Json -Depth 100 | Set-Content -Path $sarifFile
