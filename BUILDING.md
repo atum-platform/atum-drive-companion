@@ -195,13 +195,23 @@ and patches that built them, are assets of the
 | `gettext-0.22.3.tar.gz` | `839a260b2314ba66274dae7d245ec19fce190a3aa67869bf31354cb558df42c7` |
 | `glib-2.86.0-gettext-0.22.3-craft-recipes.tar.gz` | `864024f45d730b6a92d74748044c41a3e479e35f4522228744abe6f6dcc54d58` |
 
-The Qt, GLib and gettext tarballs are byte for byte the files their projects
-publish (download.qt.io, download.gnome.org and ftp.gnu.org), with the same
-SHA-256 values. Each recipe archive has a `README-ATUM.txt` saying which of its
-patches apply. `SHA256SUMS.txt` in the release lists all six files. The source
-of every other library is available from its project at the version in
-`.craft.shelf`. For a copy of the source of any of them as shipped, write to
-support@atumplatform.com.
+The Qt and GLib tarballs are byte for byte the files their projects publish
+(download.qt.io and download.gnome.org) and match the SHA-256 values published
+there. The gettext tarball is the one on ftp.gnu.org; GNU's signature for it,
+`gettext-0.22.3.tar.gz.sig`, is beside it in the release and verifies against
+the GNU keyring. Each recipe archive has a `README-ATUM.txt` saying which of
+its patches apply. `SHA256SUMS.txt` in the release lists all six files. The
+source of every other library is available from its project at the version in
+`.craft.shelf`.
+
+### Written offer
+
+For at least three years after Atum last distributes a release that contains
+this engine, Anka Ventures Vietnam Company Limited, the maker of Atum, will
+give anyone who asks a complete, machine-readable copy of the corresponding
+source of the engine and of every library in it, on a medium customarily used
+for software interchange, for a charge no more than our cost of physically
+performing the distribution. Write to support@atumplatform.com.
 
 ### Code inside the engine's own libraries
 
@@ -276,7 +286,8 @@ codesign --force --deep --sign - "$APP"
 ```
 
 `bundleSha256` is the SHA-256 of one JSON line per file or symbolic link in the
-engine bundle, in sorted path order: `[path,"file",<SHA-256 of the file>]` or
+engine bundle, walking the bundle depth first with the entries of each folder
+in sorted order: `[path,"file",<SHA-256 of the file>]` or
 `[path,"link",<link target>]`, with paths relative to `AtumDriveEngine.app`.
 Step 3 computes it the same way Atum does.
 
