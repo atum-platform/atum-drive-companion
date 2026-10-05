@@ -15,6 +15,7 @@
 #include "gui/newwizard/states/oauthcredentialssetupwizardstate.h"
 #include "gui/newwizard/jobs/webfingeruserinfojobfactory.h"
 #include "gui/newwizard/pages/oauthcredentialssetupwizardpage.h"
+#include <QTimer>
 
 namespace OCC::Wizard {
 
@@ -65,10 +66,10 @@ OAuthCredentialsSetupWizardState::OAuthCredentialsSetupWizardState(SetupWizardCo
                 } else {
                     auto instanceUrls = qvariant_cast<QVector<QUrl>>(job->result());
                     if (instanceUrls.isEmpty()) {
-                        _context->window()->showErrorMessage(tr("Server returned empty list of instances"));
-                    } else {
-                        _context->accountBuilder().setWebFingerInstances(instanceUrls);
+                        Q_EMIT evaluationFailed(tr("Server returned empty list of instances"));
+                        return;
                     }
+                    _context->accountBuilder().setWebFingerInstances(instanceUrls);
                     _context->accountBuilder().setAuthenticationStrategy(
                         std::make_unique<OAuth2AuthenticationStrategy>(token, refreshToken, oAuth->dynamicRegistrationData(), oAuth->idToken()));
                     Q_EMIT evaluationSuccessful();
@@ -77,7 +78,7 @@ OAuthCredentialsSetupWizardState::OAuthCredentialsSetupWizardState(SetupWizardCo
         });
 
 
-        oAuth->startAuthentication();
+        QTimer::singleShot(0, oAuth, [oAuth] { oAuth->startAuthentication(); });
     }
 }
 

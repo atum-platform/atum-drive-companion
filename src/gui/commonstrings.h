@@ -25,10 +25,8 @@ class CommonStrings : public QObject
     QML_ELEMENT
 public:
     Q_INVOKABLE static QString fileBrowser();
-    Q_INVOKABLE static QString copyFilePathToClipBoard();
     Q_INVOKABLE static QString showInFileBrowser(const QString &path = {});
     Q_INVOKABLE static QString showInWebBrowser();
-    Q_INVOKABLE static QString copyUrlToClipBoard();
     Q_INVOKABLE static QString copyToClipBoard();
     Q_INVOKABLE static QString filterButtonText(int filterCount);
 };

@@ -25,7 +25,7 @@ AccountConfiguredWizardPage::AccountConfiguredWizardPage(const QString &defaultS
     _ui->syncEverythingRadioButton->setChecked(true);
 
     // just adjusting the visibility should be sufficient for these branding options
-    if (Theme::instance()->wizardSkipAdvancedPage()) {
+    if (Theme::instance()->wizardSkipAdvancedPage() && !Theme::instance()->oauthIdentityProfile()) {
         _ui->advancedConfigGroupBox->setVisible(false);
     }
 
@@ -38,9 +38,13 @@ AccountConfiguredWizardPage::AccountConfiguredWizardPage(const QString &defaultS
             // the directory chooser should guarantee that the directory exists
             Q_ASSERT(QDir(directory).exists());
 
+            if (Theme::instance()->oauthIdentityProfile()) {
+                _ui->localDirectoryLineEdit->setText(QDir::toNativeSeparators(directory));
+                return;
+            }
             if (auto result = VfsPluginManager::instance().prepare(directory, {}, VfsPluginManager::instance().bestAvailableVfsMode()); !result) {
-                auto *box =
-                    new FontIconMessageBox({Resources::FontIcon::DefaultGlyphes::Warning}, tr("Sync location not supported"), result.error(), QMessageBox::Ok, this);
+                auto *box = new FontIconMessageBox(
+                    {Resources::FontIcon::DefaultGlyphes::Warning}, tr("Sync location not supported"), result.error(), QMessageBox::Ok, this);
                 box->setAttribute(Qt::WA_DeleteOnClose);
                 box->open();
                 return;
@@ -57,13 +61,22 @@ AccountConfiguredWizardPage::AccountConfiguredWizardPage(const QString &defaultS
     });
 
     // for selective sync, we run the folder wizard right after this wizard, thus don't have to specify a local directory
-    connect(_ui->configureSyncManuallyRadioButton, &QRadioButton::toggled, this, [this](bool checked) {
-        _ui->localDirectoryGroupBox->setEnabled(!checked);
-    });
+    connect(_ui->configureSyncManuallyRadioButton, &QRadioButton::toggled, this, [this](bool checked) { _ui->localDirectoryGroupBox->setEnabled(!checked); });
 
-    // toggle once to have the according handlers set up the initial UI state
-    _ui->advancedConfigGroupBox->setChecked(true);
-    _ui->advancedConfigGroupBox->setChecked(false);
+    if (Theme::instance()->oauthIdentityProfile()) {
+        // The canonical root is an enrollment choice, so it must remain visible.
+        _ui->youreAllSetLabel->setText(tr("Choose your Atum folder"));
+        _ui->advancedConfigGroupBox->setTitle(tr("Local folder"));
+        _ui->advancedConfigGroupBox->setChecked(true);
+        _ui->advancedConfigGroupBox->setCheckable(false);
+        _ui->advancedConfigGroupBoxContentWidget->setVisible(true);
+        _ui->syncModeGroupBox->hide();
+        _ui->chooseLocalDownloadDirectoryLabel->setText(tr("Local folder for your personal Drive:"));
+    } else {
+        // toggle once to have the according handlers set up the initial UI state
+        _ui->advancedConfigGroupBox->setChecked(true);
+        _ui->advancedConfigGroupBox->setChecked(false);
+    }
 
     // allows resetting local directory to default value once changed
     _ui->resetLocalDirectoryButton->setIcon(Resources::FontIcon(u''));
@@ -90,6 +103,9 @@ QString AccountConfiguredWizardPage::syncTargetDir() const
 
 SyncMode AccountConfiguredWizardPage::syncMode() const
 {
+    if (Theme::instance()->oauthIdentityProfile()) {
+        return SyncMode::SyncEverything;
+    }
     if (_ui->syncEverythingRadioButton->isChecked()) {
         if (VfsPluginManager::instance().bestAvailableVfsMode() != Vfs::Mode::Off) {
             return SyncMode::UseVfs;
@@ -110,6 +126,8 @@ bool AccountConfiguredWizardPage::validateInput() const
 
 void AccountConfiguredWizardPage::setShowAdvancedSettings(bool showAdvancedSettings)
 {
-    _ui->advancedConfigGroupBox->setChecked(showAdvancedSettings);
+    if (!Theme::instance()->oauthIdentityProfile()) {
+        _ui->advancedConfigGroupBox->setChecked(showAdvancedSettings);
+    }
 }
 }

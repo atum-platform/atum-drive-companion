@@ -42,7 +42,8 @@ enum CSYNC_EXCLUDE_TYPE : uint8_t {
     CSYNC_FILE_EXCLUDE_LONG_FILENAME,
     CSYNC_FILE_EXCLUDE_HIDDEN,
     CSYNC_FILE_EXCLUDE_CONFLICT,
-    CSYNC_FILE_EXCLUDE_SERVER_BLACKLISTED
+    CSYNC_FILE_EXCLUDE_SERVER_BLACKLISTED,
+    CSYNC_FILE_EXCLUDE_RESERVED,
 };
 
 /**
@@ -109,6 +110,9 @@ public:
      * Primarily used in tests.
      */
     void clearManualExcludes();
+
+    /// Pinned Atum roots always exclude credentials, journal and managed runtime/source.
+    void setAtumRootExclusions();
 
     /**
      * Adjusts behavior of wildcards. Only used for testing.
@@ -210,6 +214,7 @@ private:
 
     /// Exclude patterns added with addManualExclude()
     QStringList _manualExcludes;
+    QStringList _atumExcludes;
 
     /// List of all active exclude patterns
     QStringList _allExcludes;

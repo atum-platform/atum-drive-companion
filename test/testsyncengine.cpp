@@ -45,6 +45,30 @@ class TestSyncEngine : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void boundRootLossAfterDiscoveryDoesNotDeleteRemoteFile()
+    {
+        FakeFolder folder(FileInfo::A12_B12_C12_S12(), Vfs::Mode::Off, false);
+        folder.localModifier().remove(QStringLiteral("A/a1"));
+        bool rootAvailable = true;
+        auto options = folder.syncEngine().syncOptions();
+        options._localRootValid = [&rootAvailable] { return rootAvailable; };
+        folder.syncEngine().setSyncOptions(options);
+        int mutations = 0;
+        folder.setServerOverride([&mutations](auto op, const auto &request, QIODevice *) -> QNetworkReply * {
+            if (op == QNetworkAccessManager::DeleteOperation || op == QNetworkAccessManager::PutOperation || op == QNetworkAccessManager::PostOperation
+                || request.attribute(QNetworkRequest::CustomVerbAttribute).toByteArray() == "MOVE") {
+                ++mutations;
+            }
+            return nullptr;
+        });
+        connect(&folder.syncEngine(), &SyncEngine::aboutToPropagate, this, [&rootAvailable] { rootAvailable = false; });
+        QVERIFY(!folder.applyLocalModificationsAndSync());
+        QCOMPARE(mutations, 0);
+        QVERIFY(folder.currentRemoteState().find(QStringLiteral("A/a1")));
+        const auto record = folder.syncEngine().journal()->getFileRecord(QStringLiteral("A/a1"));
+        QVERIFY(record.isValid());
+    }
+
     void initTestCase_data()
     {
         QTest::addColumn<Vfs::Mode>("vfsMode");

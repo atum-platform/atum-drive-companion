@@ -72,6 +72,12 @@ endif(UNIX AND NOT APPLE)
 opencloud_add_test(LongPath)
 
 opencloud_add_test(FolderMan)
+opencloud_add_test(AtumRootBinding)
+opencloud_add_test(AtumRootFolder)
+# Exercise the actual enrollment widget; its private class is not exported by OpenCloudGui.
+target_sources(testatumrootfolder PRIVATE
+    ../src/gui/newwizard/pages/accountconfiguredwizardpage.cpp
+    ../src/gui/newwizard/pages/abstractsetupwizardpage.h)
 
 opencloud_add_test(OAuth)
 

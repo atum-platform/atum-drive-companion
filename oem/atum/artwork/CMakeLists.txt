@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.24)
+project(AtumArtwork LANGUAGES CXX)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Svg)
+add_executable(render-icons main.cpp)
+target_link_libraries(render-icons PRIVATE Qt6::Core Qt6::Gui Qt6::Svg)

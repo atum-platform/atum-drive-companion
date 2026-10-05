@@ -13,11 +13,12 @@
  */
 #pragma once
 
+#include "opencloudsynclib.h"
 #include <QJsonObject>
 
 // https://openid.net/specs/openid-connect-core-1_0.html#IDToken
 namespace OCC {
-class IdToken
+class OPENCLOUD_SYNC_EXPORT IdToken
 {
 public:
     IdToken();

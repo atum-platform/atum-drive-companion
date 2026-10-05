@@ -189,6 +189,9 @@ AccountState::AccountState(AccountPtr account)
     }
 
     connect(account.data(), &Account::appProviderErrorOccured, this, [](const QString &error) {
+        if (!isOcApp()) {
+            return;
+        }
         QMessageBox *msgBox =
             new FontIconMessageBox({Resources::FontIcon::DefaultGlyphes::Warning}, Theme::instance()->appNameGUI(), error, {}, ocApp()->settingsDialog());
         msgBox->setAttribute(Qt::WA_DeleteOnClose);
@@ -410,6 +413,9 @@ void AccountState::checkConnectivity(bool blockJobs)
         this, &AccountState::slotConnectionValidatorResult);
 
     connect(_connectionValidator, &ConnectionValidator::sslErrors, this, [blockJobs, this](const QList<QSslError> &errors) {
+        if (Theme::instance()->oauthIdentityProfile()) {
+            return;
+        }
         if (NetworkInformation::instance()->isBehindCaptivePortal()) {
             return;
         }

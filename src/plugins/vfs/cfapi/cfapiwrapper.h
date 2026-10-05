@@ -15,6 +15,9 @@
 #include "common/utility_win.h"
 #include "libsync/vfs/vfs.h"
 
+
+struct CF_PLACEHOLDER_BASIC_INFO;
+
 // see cloud mirror example
 #define FIELD_SIZE(type, field) (sizeof(((type *)0)->field))
 #define CF_SIZE_OF_OP_PARAM(field) (FIELD_OFFSET(CF_OPERATION_PARAMETERS, field) + FIELD_SIZE(CF_OPERATION_PARAMETERS, field))
@@ -40,8 +43,8 @@ namespace CfApiWrapper {
     class PlaceHolderInfo
     {
     public:
-        PlaceHolderInfo(const Utility::Handle &handle = {}, const std::vector<char> &&buffer = {})
-            : _handle(&handle)
+        PlaceHolderInfo(Utility::Handle &&handle = {}, const std::vector<char> &&buffer = {})
+            : _handle(std::move(handle))
             , _data(std::move(buffer))
         {
         }
@@ -81,10 +84,10 @@ namespace CfApiWrapper {
             Q_UNREACHABLE();
         }
 
-        const Utility::Handle &handle() const { return *_handle; }
+        const Utility::Handle &handle() const { return _handle; }
 
     private:
-        const Utility::Handle *_handle;
+        Utility::Handle _handle;
         std::vector<char> _data;
     };
 
@@ -92,7 +95,7 @@ namespace CfApiWrapper {
     // void unregisterSyncRootShellExtensions(const QString &providerName, const QString &folderAlias, const QString &accountDisplayName);
     Result<void, QString> unregisterSyncRoot(const VfsSetupParams &params);
 
-    Result<CF_CONNECTION_KEY, QString> connectSyncRoot(const std::filesystem::path &path, VfsCfApi *context);
+    Result<CF_CONNECTION_KEY, QString> connectSyncRoot(const QString &path, VfsCfApi *context);
     Result<void, QString> disconnectSyncRoot(CF_CONNECTION_KEY &&key);
 
     bool isDehydratedPlaceholder(const FileSystem::Path &path);
@@ -102,27 +105,27 @@ namespace CfApiWrapper {
      * If FileIdentity is required withFileIdentity must be set to true.
      */
     template <typename T>
-    PlaceHolderInfo<T> findPlaceholderInfo(const Utility::Handle &handle, bool withFileIdentity = false)
+    PlaceHolderInfo<T> findPlaceholderInfo(const QString &path, bool withFileIdentity = false)
     {
     }
 
     template <>
-    PlaceHolderInfo<CF_PLACEHOLDER_BASIC_INFO> findPlaceholderInfo(const Utility::Handle &handle, bool withFileIdentity);
+    PlaceHolderInfo<CF_PLACEHOLDER_BASIC_INFO> findPlaceholderInfo(const QString &path, bool withFileIdentity);
 
     template <>
-    PlaceHolderInfo<CF_PLACEHOLDER_STANDARD_INFO> findPlaceholderInfo(const Utility::Handle &handle, bool withFileIdentity);
+    PlaceHolderInfo<CF_PLACEHOLDER_STANDARD_INFO> findPlaceholderInfo(const QString &path, bool withFileIdentity);
 
     enum SetPinRecurseMode { NoRecurse = 0, Recurse, ChildrenOnly };
 
-    Result<OCC::Vfs::ConvertToPlaceholderResult, QString> setPinState(const Utility::Handle &handle, PinState state, SetPinRecurseMode mode);
-    Result<void, QString> createPlaceholderInfo(const std::filesystem::path &path, time_t modtime, qint64 size, const QByteArray &fileId, bool isDirectory);
+    Result<OCC::Vfs::ConvertToPlaceholderResult, QString> setPinState(const QString &path, PinState state, SetPinRecurseMode mode);
+    Result<void, QString> createPlaceholderInfo(const QString &path, time_t modtime, qint64 size, const QByteArray &fileId);
     Result<OCC::Vfs::ConvertToPlaceholderResult, QString> updatePlaceholderInfo(
-        const Utility::Handle &handle, time_t modtime, qint64 size, const QByteArray &fileId, const std::filesystem::path &replacesPath, bool isHydrated);
+        const QString &path, time_t modtime, qint64 size, const QByteArray &fileId, const QString &replacesPath = QString());
     Result<OCC::Vfs::ConvertToPlaceholderResult, QString> convertToPlaceholder(
-        const Utility::Handle &handle, time_t modtime, qint64 size, const QByteArray &fileId, const std::filesystem::path &replacesPath);
-    Result<OCC::Vfs::ConvertToPlaceholderResult, QString> dehydratePlaceholder(const Utility::Handle &handle, const QByteArray &fileId);
+        const QString &path, time_t modtime, qint64 size, const QByteArray &fileId, const QString &replacesPath);
+    Result<OCC::Vfs::ConvertToPlaceholderResult, QString> dehydratePlaceholder(const QString &path, const QByteArray &fileId);
     Result<OCC::Vfs::ConvertToPlaceholderResult, QString> updatePlaceholderMarkInSync(const Utility::Handle &handle);
-    bool isPlaceHolderInSync(const Utility::Handle &handle);
+    bool isPlaceHolderInSync(const QString &filePath);
 }
 
 } // namespace OCC

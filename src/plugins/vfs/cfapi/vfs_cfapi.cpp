@@ -118,7 +118,7 @@ void VfsCfApi::startImpl(const VfsSetupParams &params)
 
     cfapi::registerSyncRoot(params, [this](const QString &errorMessage) {
         if (errorMessage.isEmpty()) {
-            auto connectResult = cfapi::connectSyncRoot(this->params().root(), this);
+            auto connectResult = cfapi::connectSyncRoot(this->params().filesystemPath(), this);
             if (!connectResult) {
                 qCCritical(lcCfApi) << u"Initialization failed, couldn't connect sync root:" << connectResult.error();
                 return;
@@ -181,45 +181,37 @@ bool VfsCfApi::socketApiPinStateActionsShown() const
 
 Result<Vfs::ConvertToPlaceholderResult, QString> VfsCfApi::updateMetadata(const SyncFileItem &syncItem, const QString &filePath, const QString &replacesFile)
 {
-    const auto replacesPath = !replacesFile.isEmpty() ? FileSystem::toFilesystemPath(replacesFile) : std::filesystem::path{};
-    const auto handle = OCC::Utility::Handle::createHandle(FileSystem::toFilesystemPath(filePath));
-    if (!handle) {
-        const QString errorMessage = u"Couldn't create handle for placeholder %1 Error: %2"_s.arg(filePath, handle.errorMessage());
-        qCWarning(lcCfApi) << errorMessage << replacesPath.native();
-        return errorMessage;
-    }
+    const auto localPath = QDir::toNativeSeparators(filePath);
+    const auto replacesPath = QDir::toNativeSeparators(replacesFile);
 
     if (syncItem._type == ItemTypeVirtualFileDehydration) {
-        auto result = cfapi::dehydratePlaceholder(handle, syncItem._fileId);
+        auto result = cfapi::dehydratePlaceholder(localPath, syncItem._fileId);
         // if the dehydration call succeeded, check whether the placeholder is dehydrated
         Q_ASSERT(!result || isDehydratedPlaceholder(filePath));
         return result;
     } else {
-        if (cfapi::findPlaceholderInfo<CF_PLACEHOLDER_BASIC_INFO>(handle)) {
-            return cfapi::updatePlaceholderInfo(
-                handle, syncItem._modtime, syncItem._size, syncItem._fileId, replacesPath, syncItem._type != ItemTypeVirtualFile);
+        if (cfapi::findPlaceholderInfo<CF_PLACEHOLDER_BASIC_INFO>(localPath)) {
+            return cfapi::updatePlaceholderInfo(localPath, syncItem._modtime, syncItem._size, syncItem._fileId, replacesPath);
         } else {
-            return cfapi::convertToPlaceholder(handle, syncItem._modtime, syncItem._size, syncItem._fileId, replacesPath);
+            return cfapi::convertToPlaceholder(localPath, syncItem._modtime, syncItem._size, syncItem._fileId, replacesPath);
         }
     }
 }
 
 Result<void, QString> VfsCfApi::createPlaceholder(const SyncFileItem &item)
 {
-    return cfapi::createPlaceholderInfo(params().root() / item.localName(), item._modtime, item._size, item._fileId, item._type == ItemTypeDirectory);
+    const auto localPath = QDir::toNativeSeparators(params().filesystemPath() + item.localName());
+    const auto result = cfapi::createPlaceholderInfo(localPath, item._modtime, item._size, item._fileId);
+    return result;
 }
 
 bool VfsCfApi::needsMetadataUpdate(const SyncFileItem &item)
 {
-    const auto handle = OCC::Utility::Handle::createHandle(params().root() / item.localName());
-    if (!handle) {
-        if (handle.error() == ERROR_FILE_NOT_FOUND || handle.error() == ERROR_PATH_NOT_FOUND) {
-            return false;
-        }
-        qCWarning(lcCfApi) << u"Couldn't create handle for placeholder" << handle.path().native() << u"Error:" << handle.errorMessage();
+    const QString path = params().filesystemPath() + item.localName();
+    if (!QFileInfo::exists(path)) {
         return false;
     }
-    return !cfapi::findPlaceholderInfo<CF_PLACEHOLDER_BASIC_INFO>(handle).isValid();
+    return !cfapi::findPlaceholderInfo<CF_PLACEHOLDER_BASIC_INFO>(path).isValid();
 }
 
 bool VfsCfApi::isDehydratedPlaceholder(const QString &filePath)
@@ -232,14 +224,10 @@ LocalInfo VfsCfApi::statTypeVirtualFile(const std::filesystem::directory_entry &
     // only get placeholder info if it's a file
     if (type == ItemTypeFile) {
         const auto path = FileSystem::Path(entry);
-        const auto handle = OCC::Utility::Handle::createHandle(path);
-        if (!handle) {
-            qCWarning(lcCfApi) << u"Couldn't create handle for placeholder" << path;
-            return {};
-        }
-        if (auto placeholderInfo = cfapi::findPlaceholderInfo<CF_PLACEHOLDER_BASIC_INFO>(handle)) {
+        if (auto placeholderInfo = cfapi::findPlaceholderInfo<CF_PLACEHOLDER_BASIC_INFO>(path.toString())) {
+            Q_ASSERT(placeholderInfo.handle());
             FILE_ATTRIBUTE_TAG_INFO attributeInfo = {};
-            if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &attributeInfo, sizeof(attributeInfo))) {
+            if (!GetFileInformationByHandleEx(placeholderInfo.handle(), FileAttributeTagInfo, &attributeInfo, sizeof(attributeInfo))) {
                 const auto error = GetLastError();
                 qCCritical(lcCfApi) << u"GetFileInformationByHandle failed on" << path << OCC::Utility::formatWinError(error);
                 return {};
@@ -272,24 +260,14 @@ bool VfsCfApi::setPinState(const QString &folderPath, PinState state)
 {
     qCDebug(lcCfApi) << u"setPinState" << folderPath << state;
 
-    const auto localPath = params().root() / folderPath;
-    const auto handle = OCC::Utility::Handle::createHandle(localPath);
-    if (!handle) {
-        qCWarning(lcCfApi) << u"Couldn't create handle for placeholder" << localPath;
-        return false;
-    }
-    return static_cast<bool>(cfapi::setPinState(handle, state, cfapi::Recurse));
+    const auto localPath = QDir::toNativeSeparators(params().filesystemPath() + folderPath);
+    return static_cast<bool>(cfapi::setPinState(localPath, state, cfapi::Recurse));
 }
 
 Optional<PinState> VfsCfApi::pinState(const QString &folderPath)
 {
-    const auto localPath = params().root() / folderPath;
-    const auto handle = OCC::Utility::Handle::createHandle(localPath);
-    if (!handle) {
-        qCWarning(lcCfApi) << u"Couldn't create handle for placeholder" << localPath;
-        return {};
-    }
-    const auto info = cfapi::findPlaceholderInfo<CF_PLACEHOLDER_BASIC_INFO>(handle);
+    const auto localPath = QDir::toNativeSeparators(params().filesystemPath() + folderPath);
+    const auto info = cfapi::findPlaceholderInfo<CF_PLACEHOLDER_BASIC_INFO>(localPath);
     if (!info) {
         qCDebug(lcCfApi) << u"Couldn't find pin state for regular non-placeholder file" << localPath;
         return {};
@@ -336,25 +314,20 @@ void VfsCfApi::cancelHydration(const OCC::CfApiWrapper::CallBackContext &context
 
 void VfsCfApi::fileStatusChanged(const QString &systemFileName, SyncFileStatus fileStatus)
 {
-    const auto handle = OCC::Utility::Handle::createHandle(FileSystem::toFilesystemPath(systemFileName));
-    if (!handle) {
-        if (handle.error() == ERROR_FILE_NOT_FOUND || handle.error() == ERROR_PATH_NOT_FOUND) {
-            return;
-        }
-        qCWarning(lcCfApi) << u"Couldn't create handle for placeholder" << handle.path().native() << u"Error:" << handle.errorMessage();
+    if (!QFileInfo::exists(systemFileName)) {
         return;
     }
     if (fileStatus.tag() == SyncFileStatus::StatusUpToDate) {
-        if (auto info = CfApiWrapper::findPlaceholderInfo<CF_PLACEHOLDER_BASIC_INFO>(handle)) {
+        if (auto info = CfApiWrapper::findPlaceholderInfo<CF_PLACEHOLDER_BASIC_INFO>(systemFileName)) {
             std::ignore = cfapi::updatePlaceholderMarkInSync(info.handle());
             if (info.pinState() == PinState::Excluded) {
                 // clear possible exclude flag
                 // a file usually does not change from excluded to not excluded, but ...
-                cfapi::setPinState(handle, PinState::Inherited, CfApiWrapper::Recurse);
+                cfapi::setPinState(systemFileName, PinState::Inherited, CfApiWrapper::Recurse);
             }
         }
     } else if (fileStatus.tag() == SyncFileStatus::StatusExcluded) {
-        cfapi::setPinState(handle, PinState::Excluded, CfApiWrapper::Recurse);
+        cfapi::setPinState(systemFileName, PinState::Excluded, CfApiWrapper::Recurse);
     }
 }
 

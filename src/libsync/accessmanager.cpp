@@ -14,12 +14,14 @@
 
 #include <QAuthenticator>
 #include <QNetworkCookie>
+#include <QSslSocket>
 #include <QUuid>
 
 #include "accessmanager.h"
 #include "common/utility.h"
 #include "cookiejar.h"
 #include "httplogger.h"
+#include "theme.h"
 
 #include <algorithm>
 
@@ -27,12 +29,23 @@ namespace OCC {
 
 Q_LOGGING_CATEGORY(lcAccessManager, "sync.accessmanager", QtInfoMsg)
 
-AccessManager::AccessManager(QObject *parent)
+AccessManager::AccessManager(QObject *parent, const OAuthIdentityProfile *identity)
     : QNetworkAccessManager(parent)
 {
+    // A compiled identity always outranks an injected unbranded test descriptor.
+    const auto compiled = Theme::instance()->oauthIdentityProfile();
+    const auto *profile = compiled ? &*compiled : identity;
+    if (profile) {
+        _pinned = true;
+        _pinnedDriveOrigin = profile->driveOrigin;
+        _pinnedIssuerOrigin = QUrl(profile->issuer);
+    }
     setCookieJar(new CookieJar);
 
     connect(this, &AccessManager::sslErrors, this, [this](QNetworkReply *reply, const QList<QSslError> &errors) {
+        if (_pinned) {
+            return;
+        }
         auto filtered = errors;
         filtered.erase(std::remove_if(
                            filtered.begin(), filtered.end(), [this](const QSslError &e) {
@@ -51,6 +64,17 @@ QByteArray AccessManager::generateRequestId()
 QNetworkReply *AccessManager::createRequest(QNetworkAccessManager::Operation op, const QNetworkRequest &request, QIODevice *outgoingData)
 {
     QNetworkRequest newRequest(request);
+    if (_pinned) {
+        const auto sameOrigin = [](const QUrl &url, const QUrl &origin) {
+            return url.isValid() && url.scheme() == QStringLiteral("https") && origin.scheme() == QStringLiteral("https") && url.userInfo().isEmpty()
+                && url.fragment().isEmpty() && url.host() == origin.host() && url.port(443) == origin.port(443);
+        };
+        if (!sameOrigin(request.url(), _pinnedDriveOrigin) && !sameOrigin(request.url(), _pinnedIssuerOrigin)) {
+            // Qt reports an invalid-URL error asynchronously. No headers, cookies, body or socket escape.
+            return QNetworkAccessManager::createRequest(op, QNetworkRequest{}, nullptr);
+        }
+        newRequest.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
+    }
     newRequest.setRawHeader(QByteArrayLiteral("User-Agent"), Utility::userAgentString());
 
     // Some firewalls reject requests that have a "User-Agent" but no "Accept" header
@@ -98,12 +122,15 @@ QNetworkReply *AccessManager::createRequest(QNetworkAccessManager::Operation op,
     // allow http pipelining
     newRequest.setAttribute(QNetworkRequest::HttpPipeliningAllowedAttribute, true);
 
-    auto sslConfiguration = newRequest.sslConfiguration();
+    auto sslConfiguration = _pinned ? QSslConfiguration::defaultConfiguration() : newRequest.sslConfiguration();
+    if (_pinned) {
+        sslConfiguration.setPeerVerifyMode(QSslSocket::VerifyPeer);
+    }
 
     sslConfiguration.setSslOption(QSsl::SslOptionDisableSessionTickets, false);
     sslConfiguration.setSslOption(QSsl::SslOptionDisableSessionSharing, false);
     sslConfiguration.setSslOption(QSsl::SslOptionDisableSessionPersistence, false);
-    if (!_customTrustedCaCertificates.isEmpty()) {
+    if (!_pinned && !_customTrustedCaCertificates.isEmpty()) {
         // for some reason, passing an empty list causes the default chain to be removed
         // this behavior does not match the documentation
         sslConfiguration.addCaCertificates({ _customTrustedCaCertificates.begin(), _customTrustedCaCertificates.end() });
@@ -144,6 +171,9 @@ CookieJar *AccessManager::openCloudCookieJar() const
 
 QList<QSslError> AccessManager::filterSslErrors(const QList<QSslError> &errors) const
 {
+    if (_pinned) {
+        return errors;
+    }
     auto filtered = errors;
     filtered.erase(std::remove_if(filtered.begin(), filtered.end(),
                        [this](const QSslError &e) { return e.certificate().isNull() || _customTrustedCaCertificates.contains(e.certificate()); }),

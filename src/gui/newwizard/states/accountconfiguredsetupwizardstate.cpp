@@ -13,9 +13,11 @@
  */
 
 #include "gui/newwizard/states/accountconfiguredsetupwizardstate.h"
+#include "gui/atumrootbinding.h"
 #include "gui/folderman.h"
 #include "gui/newwizard/pages/accountconfiguredwizardpage.h"
 #include "libsync/filesystem.h"
+#include "libsync/theme.h"
 
 namespace OCC::Wizard {
 
@@ -24,7 +26,8 @@ AccountConfiguredSetupWizardState::AccountConfiguredSetupWizardState(SetupWizard
 {
     // We need some sync root for spaces. It's never a Space folder.
     // We pass an invalid UUID, because we don't "own" a syncroot yet, and all checks against UUIDs should fail.
-    const QString defaultSyncTargetDir = FolderMan::suggestSyncFolder(FolderMan::NewFolderType::SpacesSyncRoot, {});
+    const QString defaultSyncTargetDir = Theme::instance()->oauthIdentityProfile() ? QDir::home().filePath(QStringLiteral("Atum"))
+                                                                                   : FolderMan::suggestSyncFolder(FolderMan::NewFolderType::SpacesSyncRoot, {});
     QString syncTargetDir = _context->accountBuilder().syncTargetDir();
 
     if (syncTargetDir.isEmpty()) {
@@ -58,6 +61,22 @@ void AccountConfiguredSetupWizardState::evaluatePage()
             return;
         }
 
+        if (const auto profile = Theme::instance()->oauthIdentityProfile()) {
+            const auto *strategy = _context->accountBuilder().authenticationStrategy();
+            const auto duplicate = FolderMan::instance()->checkPathValidityForNewFolder(syncTargetDir, FolderMan::NewFolderType::SpacesFolder, {});
+            if (!duplicate.isEmpty()) {
+                emitEvaluationFailedError(duplicate);
+                return;
+            }
+            const auto result = AtumRootBinding::checkCandidate(
+                syncTargetDir, {profile->driveOrigin.toString(), profile->issuer, strategy ? strategy->idToken().sub() : QString(), {}});
+            if (!result) {
+                emitEvaluationFailedError(result.error());
+                return;
+            }
+            Q_EMIT evaluationSuccessful();
+            return;
+        }
         if (auto result = VfsPluginManager::instance().prepare(syncTargetDir, {}, VfsPluginManager::instance().bestAvailableVfsMode()); !result) {
             emitEvaluationFailedError(result.error());
             return;

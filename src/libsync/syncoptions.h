@@ -46,6 +46,9 @@ public:
     /** The maximum number of active jobs in parallel  */
     std::function<int()> _parallelNetworkJobs = [] { return 6; };
 
+    /** Recheck a bound local root before discovery and each propagation side effect. */
+    std::function<bool()> _localRootValid = [] { return true; };
+
     /** A regular expression to match file names
      * If no pattern is provided the default is an invalid regular expression.
      */

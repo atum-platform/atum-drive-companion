@@ -244,14 +244,13 @@ void DiscoverySingleDirectoryJob::start()
     // Start the actual HTTP job
     _proFindJob = new PropfindJob(_account, _baseUrl, _subPath, PropfindJob::Depth::One, this);
     _proFindJob->setProperties({
-        "resourcetype"_ba, //
-        "getlastmodified"_ba, //
-        "getcontentlength"_ba, //
-        "getetag"_ba, //
-        "http://owncloud.org/ns:id"_ba, //
-        "http://owncloud.org/ns:permissions"_ba, //
-        "http://owncloud.org/ns:checksums"_ba, //
-        "ocrclone:integrity-id"_ba // vault files
+        "resourcetype"_ba,
+        "getlastmodified"_ba,
+        "getcontentlength"_ba,
+        "getetag"_ba,
+        "http://owncloud.org/ns:id"_ba,
+        "http://owncloud.org/ns:permissions"_ba,
+        "http://owncloud.org/ns:checksums"_ba,
     });
 
     QObject::connect(_proFindJob, &PropfindJob::directoryListingIterated,

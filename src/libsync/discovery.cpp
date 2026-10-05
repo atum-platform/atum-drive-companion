@@ -99,7 +99,9 @@ void ProcessDirectoryJob::process()
     //
     for (const auto &f : entries) {
         const auto &e = f.second;
-        const PathTuple path = _currentFolder.addName(f.first);
+
+        PathTuple path;
+        path = _currentFolder.addName(f.first);
 
         // If the filename starts with a . we consider it a hidden file
         // For windows, the hidden state is also discovered within the vio
@@ -112,8 +114,7 @@ void ProcessDirectoryJob::process()
                 return e.localEntry.isHidden() || f.first[0] == QLatin1Char('.');
             }
         }();
-        if (handleExcluded(path._target, e.localEntry.name(), e.localEntry.isDirectory() || e.serverEntry.isDirectory(), isHidden, e.localEntry.isSymLink(),
-                e.serverEntry.isVaultFile())) {
+        if (handleExcluded(path._target, e.localEntry.name(), e.localEntry.isDirectory() || e.serverEntry.isDirectory(), isHidden, e.localEntry.isSymLink())) {
             // the file only exists in the db
             if (!e.localEntry.isValid() && e.dbEntry.isValid()) {
                 qCWarning(lcDisco) << u"Removing db entry for non existing ignored file:" << path._original;
@@ -131,7 +132,7 @@ void ProcessDirectoryJob::process()
     QTimer::singleShot(0, _discoveryData, &DiscoveryPhase::scheduleMoreJobs);
 }
 
-bool ProcessDirectoryJob::handleExcluded(const QString &path, const QString &localName, bool isDirectory, bool isHidden, bool isSymlink, bool isVaultFile)
+bool ProcessDirectoryJob::handleExcluded(const QString &path, const QString &localName, bool isDirectory, bool isHidden, bool isSymlink)
 {
     auto excluded = _discoveryData->_excludes->traversalPatternMatch(path, isDirectory ? ItemTypeDirectory : ItemTypeFile);
 
@@ -152,10 +153,13 @@ bool ProcessDirectoryJob::handleExcluded(const QString &path, const QString &loc
         isInvalidPattern = true;
     }
 
-    if (excluded == CSYNC_NOT_EXCLUDED && !isSymlink && !isVaultFile) {
+    if (excluded == CSYNC_NOT_EXCLUDED && !isSymlink) {
         return false;
     } else if (excluded == CSYNC_FILE_SILENTLY_EXCLUDED) {
         Q_EMIT _discoveryData->silentlyExcluded(path);
+        return true;
+    } else if (excluded == CSYNC_FILE_EXCLUDE_RESERVED) {
+        Q_EMIT _discoveryData->excluded(path);
         return true;
     }
 
@@ -166,13 +170,12 @@ bool ProcessDirectoryJob::handleExcluded(const QString &path, const QString &loc
     if (isSymlink) {
         /* Symbolic links are ignored. */
         item->_errorString = tr("Symbolic links are not supported in syncing.");
-    } else if (isVaultFile) {
-        item->_errorString = tr("Encrypted vault files are not synchronized because they are currently not supported by this application.");
     } else {
         switch (excluded) {
         case CSYNC_NOT_EXCLUDED:
         case CSYNC_FILE_SILENTLY_EXCLUDED:
-            Q_UNREACHABLE();
+        case CSYNC_FILE_EXCLUDE_RESERVED:
+            qFatal("These were handled earlier");
         case CSYNC_FILE_EXCLUDE_LIST:
             item->_errorString = tr("The file is listed on the ignore list.");
             item->_status = SyncFileItem::Excluded;

@@ -41,8 +41,6 @@ public:
 
     QString error() const;
 
-    bool isVaultFile() const;
-
     bool isValid() const;
 
 private:

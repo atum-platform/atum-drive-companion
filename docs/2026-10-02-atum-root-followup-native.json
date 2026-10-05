@@ -1,0 +1,98 @@
+{
+  "checkpoint": "root-review-confirmed-fixes",
+  "date_utc": "2026-10-02",
+  "base_commit": "ec4c4f77fcda0b784246713a6da3b4b32d711c66",
+  "compiled_profile": "immutable S2, separate AtumDriveRootTest application/credential service",
+  "authentication": "Separate OAuth and native custody suites; Folder tests use synthetic credentials and remote HTTP with real Folder/settings/SQLite/physical locks.",
+  "total_cases": 120,
+  "receipts": [
+    {
+      "suite": "binding",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timestamp_local": "2026-10-02T21:23:59",
+      "receipt_sha256": "92c171d3fbda4fdddc56d5fb35eb9cbccfd6b8156f982d9625e88e8c35cfb9a1"
+    },
+    {
+      "suite": "folder",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timestamp_local": "2026-10-02T21:24:02",
+      "receipt_sha256": "10f3b13886667683d9e852258c3babf5052e4434f537543fcfbcb04ed2481795"
+    },
+    {
+      "suite": "engine",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timestamp_local": "2026-10-02T20:59:05",
+      "receipt_sha256": "9c3220507fd123efeb6d5769f335b736e99cdc0ea19db4e637c5e0dc54f3d257"
+    },
+    {
+      "suite": "folderman",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timestamp_local": "2026-10-02T20:59:05",
+      "receipt_sha256": "c509851e8ed3979d1d41f361f5f6aa45317a8c235cfdec10d932d0782b9820a6"
+    },
+    {
+      "suite": "oauth",
+      "tests": 52,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timestamp_local": "2026-10-02T21:13:48",
+      "receipt_sha256": "aa5ed12c2ae5f9af10a32eb3f7bfd58f6fe13da7418c01856d0fb8b32e9af05f"
+    },
+    {
+      "suite": "exclusions",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timestamp_local": "2026-10-02T21:13:51",
+      "receipt_sha256": "c3f3201131d99b44dda1a56c7874cb4ee30ca4aea0b6a5706807c327d70e2078"
+    },
+    {
+      "suite": "custody",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "timestamp_local": "2026-10-02T21:13:59",
+      "receipt_sha256": "6dc5af64f4ede461f258dc2bc8370404fc55de9c32186216d0623818bf667d3b"
+    }
+  ],
+  "source_sha256": {
+    "src/cmd/cmd.cpp": "c6a2580ba9d06f6291b3db67285582c1338a4e1c567f33448636cb4263515966",
+    "src/gui/application.cpp": "077fd32cb12025ce7879acc843c711090f8597fb1900a106c06df8e27a117e40",
+    "src/gui/atumrootbinding.cpp": "75018b4726850e409f90c97e81addc2e64ec524c01e6ba8194faa8cafc06d67a",
+    "src/gui/atumrootbinding.h": "e3b42fe6cb26d25741bbe4e4f1878e36de66bb692de1365699f350084afb3516",
+    "src/gui/folder.cpp": "65fe4a4e4c2d4dc28f235518e4a8b810f78729a15c8da3cc8ff4362c05dc0466",
+    "src/gui/folder.h": "6857f46be070039f4ee1fbe260295e4d5294126a3a9e5e764edb9410d24dbec1",
+    "src/gui/folderman.cpp": "1a50ac9401f5fe16559a6e2cbad974cf409e9af67e1918aac485d87addd50106",
+    "src/gui/folderman.h": "539c08222a8324955ec8857f85881a68d35ce102ea5fe97cf49aa7b60cd632f2",
+    "src/gui/newwizard/states/accountconfiguredsetupwizardstate.cpp": "d904d6042cfa888c1f5fff16c2854e9287a0fe4d88653d0f1ad3ccb21babeba1",
+    "src/libsync/owncloudpropagator.cpp": "71477b1a3d9c0052fe9952d3c3b1c3445b761c9271a669075c8e7dd1837dae1d",
+    "src/libsync/syncengine.cpp": "2859d6b2fc63d146eccdd63caf7cfcf87a2159872fd46b448607893d3272f8a5",
+    "src/libsync/syncoptions.h": "dcd1f6ab79d8086669ab5b0d96c9ae12697e6a153f60e236743021c7e6d002d5",
+    "test/CMakeLists.txt": "eb993f9c987c9afa745a01e076f1e65fcba5ba0d9a2eef6aa49e97322cb914a1",
+    "test/testatumrootbinding.cpp": "85fa2263425cbc14dd985959ec5e706aaaae4dc1afd921b2ee027787f81e2ad7",
+    "test/testatumrootfolder.cpp": "e3c27fde64918636ce990c486be52e2a78be1aabee8a1dcb4697ded2c8348be2",
+    "test/testsyncengine.cpp": "29184b24718d7acf1cf04c07d88d6835e17b721ff311524e076198fe39bb9577"
+  },
+  "not_accepted": [
+    "live wizard/root/removal",
+    "portable dependency closure",
+    "signed two-Mac release",
+    "nonempty inventory approval",
+    "full G8 and 72-hour soak"
+  ]
+}

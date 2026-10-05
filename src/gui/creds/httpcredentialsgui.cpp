@@ -53,6 +53,11 @@ HttpCredentialsGui::HttpCredentialsGui(const QString &accessToken, const QString
 
 void HttpCredentialsGui::restartOauth()
 {
+    // The parent Atum app owns reauthentication in internal-engine mode.
+    if (!isOcApp()) {
+        Q_EMIT requestLogout();
+        return;
+    }
     qCDebug(lcHttpCredentialsGui) << u"showing modal dialog asking user to log in again via OAuth2";
     if (_asyncAuth || _account->credentialManager()->hasPendingDeletion()) {
         return;
@@ -112,6 +117,13 @@ void HttpCredentialsGui::asyncAuthResult(OAuth::Result r, const QString &token, 
     _accessToken = token;
     _refreshToken = refreshToken;
     persist();
+}
+
+void HttpCredentialsGui::acceptNativeOAuth(const QString &token, const QString &refreshToken)
+{
+    if (!isOcApp()) {
+        asyncAuthResult(OAuth::LoggedIn, token, refreshToken);
+    }
 }
 
 void HttpCredentialsGui::forgetSensitiveData()

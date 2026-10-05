@@ -22,11 +22,21 @@
 #include <QFileInfo>
 #include <QObject>
 #include <QPalette>
+#include <optional>
 #include <qquickwindow.h>
 
 namespace OCC {
 
 class SyncResult;
+
+// Optional immutable OEM identity binding. Unbranded clients retain discovery.
+struct OAuthIdentityProfile
+{
+    QUrl driveOrigin;
+    QString issuer;
+    QString clientId;
+    QString scopes;
+};
 
 /**
  * @brief The Theme class
@@ -205,6 +215,8 @@ public:
     virtual QString oauthClientId() const;
     virtual QString oauthClientSecret() const;
 
+    virtual std::optional<OAuthIdentityProfile> oauthIdentityProfile() const;
+
 
     /**
      * By default the client tries to get the OAuth access endpoint and the OAuth token endpoint from /.well-known/openid-configuration
@@ -218,6 +230,19 @@ public:
      * List of ports to use for the local redirect server
      */
     virtual QVector<quint16> oauthPorts() const;
+
+    /**
+     * Returns the required opeidconnect scopes
+     */
+    virtual QString openIdConnectScopes() const;
+
+    /**
+     * Returns the openidconnect promt type
+     * It is supposed to be "consent select_account".
+     * For Konnect it currently needs to be select_account,
+     * which is the current default.
+     */
+    virtual QString openIdConnectPrompt() const;
 
     /**
      * Defines whether the client attempts danamic registration with the IdP or uses the

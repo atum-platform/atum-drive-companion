@@ -97,18 +97,17 @@ QString Utility::formatWinError(long errorCode)
         .arg(QString::number(static_cast<ulong>(errorCode), 16), QString::fromWCharArray(_com_error(errorCode).ErrorMessage()));
 }
 
-Utility::Handle::Handle(HANDLE h, const std::filesystem::path &path, std::function<void(HANDLE)> &&close, uint32_t error)
+Utility::Handle::Handle(HANDLE h, std::function<void(HANDLE)> &&close, uint32_t error)
     : _handle(h)
     , _close(std::move(close))
     , _error(error)
-    , _path(path)
 {
     if (_handle == INVALID_HANDLE_VALUE && _error == NO_ERROR) {
         _error = GetLastError();
     }
 }
 
-Utility::Handle Utility::Handle::createHandle(const std::filesystem::path &path, const CreateHandleParameter &p, std::function<void(HANDLE)> &&close)
+Utility::Handle Utility::Handle::createHandle(const std::filesystem::path &path, const CreateHandleParameter &p)
 {
     uint32_t flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS;
     if (!p.followSymlinks) {
@@ -117,12 +116,13 @@ Utility::Handle Utility::Handle::createHandle(const std::filesystem::path &path,
     if (p.async) {
         flags |= FILE_FLAG_OVERLAPPED;
     }
-    return Utility::Handle{
-        CreateFileW(path.lexically_normal().native().data(), p.accessMode, p.shareMode, nullptr, p.creationFlags, flags, nullptr), path, std::move(close)};
+    auto handle = Utility::Handle{CreateFileW(path.native().data(), p.accessMode, p.shareMode, nullptr, p.creationFlags, flags, nullptr)};
+    handle._path = path;
+    return handle;
 }
 
-Utility::Handle::Handle(HANDLE h, const std::filesystem::path &path)
-    : Handle(h, path, &CloseHandle)
+Utility::Handle::Handle(HANDLE h)
+    : Handle(h, &CloseHandle)
 {
 }
 

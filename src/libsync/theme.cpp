@@ -186,7 +186,9 @@ QString Theme::gitSHA1(VersionFormat format) const
     if (!aboutShowCopyright()) {
         return gitShahSort;
     }
-    const auto gitUrl = QStringLiteral("https://github.com/opencloud-eu/desktop/commit/%1").arg(Version::gitSha());
+    const auto gitUrl = (oauthIdentityProfile() ? QStringLiteral("https://github.com/atum-platform/atum-drive-companion/commit/%1")
+                                                : QStringLiteral("https://github.com/opencloud-eu/desktop/commit/%1"))
+                            .arg(Version::gitSha());
     switch (format) {
     case Theme::VersionFormat::OneLiner:
         Q_FALLTHROUGH();
@@ -195,7 +197,7 @@ QString Theme::gitSHA1(VersionFormat format) const
     case Theme::VersionFormat::Url:
         return gitUrl;
     case Theme::VersionFormat::RichText:
-        return QStringLiteral("<a href=\"%1\">%3</a>").arg(gitUrl, gitShahSort);
+        return QStringLiteral("<a href=\"%1\">%2</a>").arg(gitUrl, gitShahSort);
     }
     return QString();
 }
@@ -228,8 +230,8 @@ QString Theme::aboutVersions(Theme::VersionFormat format) const
             gitUrl = gitSHA1(format) + br;
         }
     }
-    QStringList sysInfo = {QStringLiteral("OS: %1-%2 (kernel: %3, build arch: %4, CPU arch: %5)")
-            .arg(QSysInfo::productType(), QSysInfo::productVersion(), QSysInfo::kernelVersion(), QSysInfo::buildCpuArchitecture(), Utility::currentCpuArch())};
+    QStringList sysInfo = {QStringLiteral("OS: %1-%2 (build arch: %3, CPU arch: %4)")
+                               .arg(QSysInfo::productType(), QSysInfo::kernelVersion(), QSysInfo::buildCpuArchitecture(), Utility::currentCpuArch())};
     // may be called by both GUI and CLI, but we can display QPA only for the former
     if (auto guiApp = qobject_cast<QGuiApplication *>(qApp)) {
         sysInfo << QStringLiteral("QPA: %1").arg(guiApp->platformName());
@@ -328,6 +330,11 @@ QString Theme::oauthClientSecret() const
     return QString();
 }
 
+std::optional<OAuthIdentityProfile> Theme::oauthIdentityProfile() const
+{
+    return std::nullopt;
+}
+
 QPair<QString, QString> Theme::oauthOverrideAuthUrl() const
 {
     return {};
@@ -337,6 +344,16 @@ QVector<quint16> Theme::oauthPorts() const
 {
     // zero means a random port
     return {0};
+}
+
+QString Theme::openIdConnectScopes() const
+{
+    return QStringLiteral("openid offline_access email profile");
+}
+
+QString Theme::openIdConnectPrompt() const
+{
+    return QStringLiteral("select_account consent");
 }
 
 bool Theme::oidcEnableDynamicRegistration() const

@@ -104,10 +104,17 @@ bool PropagateItemJob::scheduleSelfOrChild()
     qCInfo(lcPropagator) << u"Starting propagation of" << _item << u"by" << this;
 
     setState(Running);
-    if (thread() != QApplication::instance()->thread()) {
-        QMetaObject::invokeMethod(this, &PropagateItemJob::start); // We could be in a different thread (neon jobs)
-    } else {
+    const auto startOwned = [this] {
+        if (!propagator()->syncOptions()._localRootValid()) {
+            done(SyncFileItem::FatalError, tr("The enrolled local root is unavailable or changed. Sync is paused."));
+            return;
+        }
         start();
+    };
+    if (thread() != QApplication::instance()->thread()) {
+        QMetaObject::invokeMethod(this, startOwned); // We could be in a different thread (neon jobs)
+    } else {
+        startOwned();
     }
     return true;
 }
@@ -552,13 +559,15 @@ Result<QString, bool> OwncloudPropagator::localFileNameClash(const QString &relF
         }
 #elif defined(Q_OS_WIN)
         WIN32_FIND_DATA FindFileData;
-        const auto path = FileSystem::toFilesystemPath(fileInfo.filePath());
-        HANDLE hFind = FindFirstFileW(path.c_str(), &FindFileData);
+        const Utility::Handle hFind(FindFirstFileW(reinterpret_cast<const wchar_t *>(FileSystem::longWinPath(fileInfo.filePath()).utf16()), &FindFileData),
+            [](HANDLE h) { FindClose(h); });
         if (hFind != INVALID_HANDLE_VALUE) {
-            const Utility::Handle handle(hFind, path.parent_path() / FindFileData.cFileName, [](HANDLE h) { FindClose(h); });
-            if (path.compare(handle.path()) != 0) {
-                qCWarning(lcPropagator) << u"Detected case clash between" << fileInfo.filePath() << u"and" << handle.path().native();
-                return FileSystem::fromFilesystemPath(handle.path().native());
+            const QString realFileName = QString::fromWCharArray(FindFileData.cFileName);
+
+            if (!fileInfo.filePath().endsWith(realFileName, Qt::CaseSensitive)) {
+                const QString clashName = fileInfo.path() + QLatin1Char('/') + realFileName;
+                qCWarning(lcPropagator) << u"Detected case clash between" << fileInfo.filePath() << u"and" << clashName;
+                return clashName;
             }
         }
 #else

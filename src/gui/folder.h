@@ -39,6 +39,7 @@ class QSettings;
 
 namespace OCC {
 
+class AtumRootBinding;
 class Vfs;
 class SyncEngine;
 class SyncRunFileLog;
@@ -55,7 +56,6 @@ class OPENCLOUD_GUI_EXPORT Folder : public QObject
     Q_PROPERTY(GraphApi::Space *space READ space NOTIFY spaceChanged)
     Q_PROPERTY(QString path READ path CONSTANT)
     Q_PROPERTY(QUrl webDavUrl READ webDavUrl CONSTANT)
-    Q_PROPERTY(QUrl webUrl READ webUrl NOTIFY webUrlChanged)
     Q_PROPERTY(bool isReady READ isReady NOTIFY isReadyChanged)
     Q_PROPERTY(bool isSyncPaused READ isSyncPaused NOTIFY syncPausedChanged)
     Q_PROPERTY(bool isSyncRunning READ isSyncRunning NOTIFY isSyncRunningChanged)
@@ -221,8 +221,6 @@ public:
      */
     GraphApi::Space *space() const;
 
-    QUrl webUrl() const;
-
 Q_SIGNALS:
     void syncStateChange();
     void syncFinished(const SyncResult &result);
@@ -232,8 +230,6 @@ Q_SIGNALS:
     void isReadyChanged();
     void isSyncRunningChanged();
 
-    void webUrlChanged();
-
 
     /**
      * Fires for each change inside this folder that wasn't caused
@@ -242,6 +238,8 @@ Q_SIGNALS:
     void watchedFileChangedExternally(const QString &path);
 
 public Q_SLOTS:
+    void openInWebBrowser();
+
     /**
       * Starts a sync operation
       *
@@ -298,12 +296,15 @@ private Q_SLOTS:
 private:
     /** Create a new Folder
      */
-    Folder(const FolderDefinition &definition, const AccountStatePtr &accountState, std::unique_ptr<Vfs> &&vfs, QObject *parent = nullptr);
+    Folder(const FolderDefinition &definition, const AccountStatePtr &accountState, std::unique_ptr<Vfs> &&vfs, QObject *parent = nullptr,
+        bool enrollEmptyRoot = false);
 
 
     void showSyncResultPopup();
 
-    bool checkLocalPath();
+    bool checkLocalPath(bool enrollEmptyRoot);
+    void verifyAtumRoot();
+    bool atumSpaceMatches() const;
 
     SyncOptions loadSyncOptions();
 
@@ -350,6 +351,9 @@ private:
     /// Reset when no follow-up is requested.
     int _consecutiveFollowUpSyncs = 0;
 
+    // Destroy the journal before releasing root ownership.
+    bool _atumRootInvalid = false;
+    std::unique_ptr<AtumRootBinding> _atumRoot;
     mutable SyncJournalDb _journal;
 
     QScopedPointer<SyncRunFileLog> _fileLog;
@@ -375,8 +379,6 @@ private:
      * The vfs mode instance (created by plugin) to use. Never null.
      */
     QSharedPointer<Vfs> _vfs;
-
-    QUrl _webUrl;
 
     friend class FolderMan;
 };

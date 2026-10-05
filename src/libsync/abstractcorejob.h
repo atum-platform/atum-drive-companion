@@ -37,6 +37,7 @@ class OPENCLOUD_SYNC_EXPORT CoreJob : public QObject
     friend class AbstractCoreJobFactory;
 
 public:
+    // A local validation failure may have no network reply.
     explicit CoreJob(QNetworkReply *reply, QObject *parent);
 
     [[nodiscard]] const QVariant &result() const;

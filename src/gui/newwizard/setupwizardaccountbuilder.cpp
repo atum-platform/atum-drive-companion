@@ -100,7 +100,9 @@ AccountPtr SetupWizardAccountBuilder::build() const
         if (!QFileInfo::exists(_defaultSyncTargetDir)) {
             OC_ASSERT(QDir().mkpath(_defaultSyncTargetDir));
         }
-        Utility::markDirectoryAsSyncRoot(_defaultSyncTargetDir, newAccountPtr->uuid());
+        if (!Theme::instance()->oauthIdentityProfile()) {
+            Utility::markDirectoryAsSyncRoot(_defaultSyncTargetDir, newAccountPtr->uuid());
+        }
     }
 
     return newAccountPtr;

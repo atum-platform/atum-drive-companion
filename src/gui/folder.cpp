@@ -15,6 +15,7 @@
  */
 
 #include "folder.h"
+#include "atumrootbinding.h"
 
 #include "account.h"
 #include "accountstate.h"
@@ -28,6 +29,7 @@
 #include "folderwatcher.h"
 #include "gui/accountsettings.h"
 #include "gui/folderdefinition.h"
+#include "guiutility.h"
 #include "libsync/graphapi/spacesmanager.h"
 #include "libsync/vfs/vfs.h"
 #include "localdiscoverytracker.h"
@@ -38,7 +40,6 @@
 #include "syncresult.h"
 #include "syncrunfilelog.h"
 #include "theme.h"
-#include "guiutility.h"
 
 #ifdef Q_OS_WIN
 #include "common/utility_win.h"
@@ -70,7 +71,7 @@ using namespace FileSystem::SizeLiterals;
 
 Q_LOGGING_CATEGORY(lcFolder, "gui.folder", QtInfoMsg)
 
-Folder::Folder(const FolderDefinition &definition, const AccountStatePtr &accountState, std::unique_ptr<Vfs> &&vfs, QObject *parent)
+Folder::Folder(const FolderDefinition &definition, const AccountStatePtr &accountState, std::unique_ptr<Vfs> &&vfs, QObject *parent, bool enrollEmptyRoot)
     : QObject(parent)
     , _accountState(accountState)
     , _definition(definition)
@@ -85,7 +86,7 @@ Folder::Folder(const FolderDefinition &definition, const AccountStatePtr &accoun
     _syncResult.setStatus(definition.paused ? SyncResult::Paused : SyncResult::Queued);
 
     // check if the local path exists
-    if (checkLocalPath()) {
+    if (checkLocalPath(enrollEmptyRoot)) {
         // those errors should not persist over sessions
         _journal.wipeErrorBlacklistCategory(SyncJournalErrorBlacklistRecord::Category::LocalSoftError);
         _engine.reset(new SyncEngine(_accountState->account(), webDavUrl(), path(), {}, &_journal));
@@ -96,21 +97,27 @@ Folder::Folder(const FolderDefinition &definition, const AccountStatePtr &accoun
             qCWarning(lcFolder, "Could not read system exclude file");
         }
 
+        if (_atumRoot) {
+            auto *rootCheck = new QTimer(this);
+            rootCheck->setInterval(5000);
+            connect(rootCheck, &QTimer::timeout, this, &Folder::verifyAtumRoot);
+            rootCheck->start();
+        }
         connect(_accountState.data(), &AccountState::isConnectedChanged, this, &Folder::canSyncChanged);
-
-
-        auto *context = new QObject(this);
-        // once we successfully retrieved the private link we can delete the context to disconnect the signal
-        connect(_accountState->account().data(), &Account::capabilitiesChanged, context, [context, this] {
-            if (_accountState->account()->capabilities().privateLinkPropertyAvailable()) {
-                fetchPrivateLinkUrl(_accountState->account(), webDavUrl(), {}, this, [context, this](const QUrl &privateLinkUrl) {
-                    _webUrl = privateLinkUrl;
-                    Q_EMIT webUrlChanged();
-                    context->deleteLater();
-                });
-            } else {
-                context->deleteLater();
+        connect(_accountState->account()->spacesManager(), &GraphApi::SpacesManager::updated, this, [this] {
+            if (_atumRoot && !atumSpaceMatches()) {
+                const auto message = tr("The account does not have exactly one matching personal space. Sync is paused; files and journal are preserved.");
+                if (isSyncRunning()) {
+                    _engine->abort(message);
+                }
+                if (syncState() != SyncResult::Paused) {
+                    _syncResult.appendErrorString(message);
+                    setSyncState(SyncResult::Paused);
+                }
+            } else if (_atumRoot && !_atumRootInvalid && syncState() == SyncResult::Paused && !isSyncPaused()) {
+                setSyncState(SyncResult::Queued);
             }
+            Q_EMIT canSyncChanged();
         });
 
         // use a direct connection, the folder status has to be up to date
@@ -122,7 +129,9 @@ Folder::Folder(const FolderDefinition &definition, const AccountStatePtr &accoun
         connect(_engine.data(), &SyncEngine::seenLockedFile, FolderMan::instance(), &FolderMan::slotSyncOnceFileUnlocks);
         connect(_engine.data(), &SyncEngine::syncError, this, &Folder::slotSyncError);
 
-        connect(ProgressDispatcher::instance(), &ProgressDispatcher::folderConflicts, this, &Folder::slotFolderConflicts);
+        connect(ProgressDispatcher::instance(), &ProgressDispatcher::folderConflicts,
+            this, &Folder::slotFolderConflicts);
+        connect(_engine.data(), &SyncEngine::excluded, this, [this](const QString &path) { Q_EMIT ProgressDispatcher::instance()->excluded(this, path); });
 
         _localDiscoveryTracker.reset(new LocalDiscoveryTracker);
         connect(_engine.data(), &SyncEngine::finished,
@@ -172,12 +181,7 @@ GraphApi::Space *Folder::space() const
     return _accountState->account()->spacesManager()->space(_definition.spaceId());
 }
 
-QUrl Folder::webUrl() const
-{
-    return _webUrl;
-}
-
-bool Folder::checkLocalPath()
+bool Folder::checkLocalPath(bool enrollEmptyRoot)
 {
     QString error;
 #ifdef Q_OS_WIN
@@ -202,6 +206,33 @@ bool Folder::checkLocalPath()
                 error = pathLengthCheck.error();
             }
 
+            if (const auto profile = Theme::instance()->oauthIdentityProfile()) {
+                const auto account = _accountState->account();
+                if (account->url() != profile->driveOrigin || account->atumIssuer() != profile->issuer
+                    || _definition.webDavUrl().scheme() != profile->driveOrigin.scheme() || _definition.webDavUrl().host() != profile->driveOrigin.host()
+                    || _definition.webDavUrl().port(443) != profile->driveOrigin.port(443) || !_definition.webDavUrl().userInfo().isEmpty()
+                    || !_definition.webDavUrl().query().isEmpty() || !_definition.webDavUrl().fragment().isEmpty()
+                    || _definition.journalPath != AtumRootBinding::journalName() || _vfs->mode() != Vfs::Mode::Off || !account->hasDefaultSyncRoot()
+                    || QFileInfo(account->defaultSyncRoot()).canonicalFilePath() != fi.canonicalFilePath()) {
+                    error = tr("This root does not match the enrolled Atum account. Files and journal have been preserved.");
+                } else {
+                    auto owner = AtumRootBinding::acquire(
+                        path(), {account->url().toString(), account->atumIssuer(), account->atumSubject(), _definition.spaceId()}, enrollEmptyRoot);
+                    if (!owner) {
+                        error = owner.error();
+                    } else {
+                        _atumRoot = *std::move(owner);
+                    }
+                }
+                if (error.isEmpty() && SyncJournalDb::dbIsTooNewForClient(_definition.absoluteJournalPath())) {
+                    error = tr("This journal requires a newer client. Files and journal have been preserved.");
+                }
+                if (!error.isEmpty()) {
+                    _syncResult.appendErrorString(error);
+                    _syncResult.setStatus(SyncResult::SetupError);
+                    return false;
+                }
+            }
             const auto result = VfsPluginManager::instance().prepare(path(), _accountState->account()->uuid(), _vfs->mode());
             if (!result) {
                 error = result.error();
@@ -240,6 +271,16 @@ SyncOptions Folder::loadSyncOptions()
     opt._vfs = _vfs;
     // account is currently a shared ptr and thus the lifetime of the account object is guaranteed
     opt._parallelNetworkJobs = [account = _accountState->account()] { return account->isHttp2Supported() ? 20 : 6; };
+    if (_atumRoot) {
+        // Propagation may run off the GUI thread. Capture only immutable identity
+        // and file ownership; account/Graph readiness stays on the GUI watcher.
+        // The engine is destroyed before the owner in Folder::~Folder().
+        const auto account = _accountState->account();
+        const AtumRootIdentity identity{account->url().toString(), account->atumIssuer(), account->atumSubject(), _definition.spaceId()};
+        opt._localRootValid = [owner = _atumRoot.get(), identity, journal = _definition.absoluteJournalPath()] {
+            return owner->matches(identity) && QFileInfo::exists(journal);
+        };
+    }
 
     return opt;
 }
@@ -381,8 +422,45 @@ bool Folder::isSyncPaused() const
     return _definition.paused;
 }
 
+void Folder::verifyAtumRoot()
+{
+    if (!_atumRoot || _atumRootInvalid) {
+        return;
+    }
+    const auto account = _accountState->account();
+    if (!_atumRoot->matches({account->url().toString(), account->atumIssuer(), account->atumSubject(), _definition.spaceId()})
+        || !QFileInfo::exists(_definition.absoluteJournalPath())) {
+        _atumRootInvalid = true;
+        const auto message = tr("The enrolled root, identity or journal is unavailable or changed. Sync is paused; restore the original root and restart Atum "
+                                "Drive. Files and journal have been preserved.");
+        if (isSyncRunning()) {
+            _engine->abort(message);
+        }
+        _syncResult.appendErrorString(message);
+        setSyncState(SyncResult::SetupError);
+        Q_EMIT canSyncChanged();
+    }
+}
+
+bool Folder::atumSpaceMatches() const
+{
+    const auto spaces = _accountState->account()->spacesManager()->spaces();
+    const auto personalCount = std::count_if(spaces.begin(), spaces.end(),
+        [](const auto *candidate) { return !candidate->disabled() && candidate->drive().getDriveType() == QStringLiteral("personal"); });
+    const auto *personal = space();
+    return personalCount == 1 && personal && !personal->disabled() && personal->drive().getDriveType() == QStringLiteral("personal")
+        && _definition.webDavUrl() == QUrl(personal->drive().getRoot().getWebDavUrl());
+}
+
 bool Folder::canSync() const
 {
+    if (Theme::instance()->oauthIdentityProfile()) {
+        const auto account = _accountState->account();
+        if (_atumRootInvalid || !_atumRoot || !QFileInfo::exists(_definition.absoluteJournalPath())
+            || !_atumRoot->matches({account->url().toString(), account->atumIssuer(), account->atumSubject(), _definition.spaceId()}) || !atumSpaceMatches()) {
+            return false;
+        }
+    }
     return _engine && !isSyncPaused() && accountState()->readyForSync() && isReady() && _accountState->account()->hasCapabilities() && _folderWatcher;
 }
 
@@ -526,7 +604,7 @@ void Folder::createGuiLog(const QString &filename, LogStatus status, int count,
             break;
         }
 
-        if (!text.isEmpty()) {
+        if (!text.isEmpty() && isOcApp()) {
             ocApp()->systemNotificationManager()->notify({tr("Sync Activity"), text, Resources::FontIcon(u'')});
         }
     }
@@ -679,6 +757,9 @@ void Folder::slotWatchedPathsChanged(const QSet<QString> &paths, ChangeReason re
 
 void Folder::setVirtualFilesEnabled(bool enabled)
 {
+    if (Theme::instance()->oauthIdentityProfile()) {
+        return;
+    }
     Vfs::Mode newMode = _definition.virtualFilesMode;
     if (enabled && _definition.virtualFilesMode == Vfs::Mode::Off) {
         newMode = VfsPluginManager::instance().bestAvailableVfsMode();
@@ -776,6 +857,11 @@ bool Folder::isFileExcludedRelative(const QString &relativePath) const
     return isFileExcludedAbsolute(path() + relativePath);
 }
 
+void Folder::openInWebBrowser()
+{
+    fetchPrivateLinkUrl(_accountState->account(), webDavUrl(), {}, this, [](const QUrl &url) { Utility::openBrowser(url, nullptr); });
+}
+
 void Folder::wipeForRemoval()
 {
     // we can't acces those variables
@@ -789,6 +875,15 @@ void Folder::wipeForRemoval()
     // especially the upcoming deletion of the db
     _folderWatcher.reset();
 
+    if (Theme::instance()->oauthIdentityProfile()) {
+        // Removal/sign-out detaches the client; enrollment and dirty journal are recoverable.
+        FolderMan::instance()->socketApi()->slotUnregisterPath(this);
+        _journal.close();
+        if (_vfs) {
+            _vfs->stop();
+        }
+        return;
+    }
     // Delete files that have been partially downloaded.
     slotDiscardDownloadProgress();
 
@@ -847,8 +942,14 @@ void Folder::startSync()
         return;
     }
 
-    if (!OC_ENSURE(canSync())) {
-        qCCritical(lcFolder) << u"ERROR folder is currently not sync able.";
+    if (!canSync()) {
+        if (Theme::instance()->oauthIdentityProfile()) {
+            verifyAtumRoot();
+            qCWarning(lcFolder) << u"Atum root is unavailable or not ready; sync remains paused.";
+        } else {
+            OC_ENSURE(false);
+            qCCritical(lcFolder) << u"ERROR folder is currently not sync able.";
+        }
         return;
     }
 
@@ -921,7 +1022,9 @@ void Folder::setDirtyNetworkLimits()
 
 void Folder::reloadSyncOptions()
 {
-    _engine->setSyncOptions(loadSyncOptions());
+    if (_engine) {
+        _engine->setSyncOptions(loadSyncOptions());
+    }
 }
 
 void Folder::slotSyncError(const QString &message, ErrorCategory category)
@@ -950,7 +1053,9 @@ void Folder::slotSyncFinished(bool success)
 
     auto syncStatus = SyncResult::Status::Undefined;
 
-    if (syncError) {
+    if (_atumRootInvalid) {
+        syncStatus = SyncResult::SetupError;
+    } else if (syncError) {
         syncStatus = SyncResult::Error;
     } else if (_syncResult.foundFilesNotSynced()) {
         syncStatus = SyncResult::Problem;
@@ -1072,12 +1177,20 @@ void Folder::warnOnNewExcludedItem(const SyncJournalFileRecord &record, QStringV
                                             "It will not be synchronized.")
                                              .arg(fi.filePath());
 
-    ocApp()->systemNotificationManager()->notify({tr("»%1« is not synchronized").arg(fi.fileName()), message, Resources::FontIcon(u'')});
+    if (isOcApp()) {
+        ocApp()->systemNotificationManager()->notify({tr("»%1« is not synchronized").arg(fi.fileName()), message, Resources::FontIcon(u'')});
+    }
 }
 
 void Folder::slotWatcherUnreliable(const QString &message)
 {
     qCWarning(lcFolder) << u"Folder watcher for" << path() << u"became unreliable:" << message;
+
+    if (!isOcApp()) {
+        _syncResult.appendErrorString(message);
+        setSyncState(SyncResult::Error);
+        return;
+    }
 
     QMessageBox *msgBox = new FontIconMessageBox({Resources::FontIcon::DefaultGlyphes::Info}, Theme::instance()->appNameGUI(),
         tr("Changes in synchronized folders could not be tracked reliably.\n"

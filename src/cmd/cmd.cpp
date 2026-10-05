@@ -237,6 +237,10 @@ void setupCredentials(SyncCTX &ctx)
         f.close();
     }
 
+    if (Theme::instance()->oauthIdentityProfile()) {
+        qCritical() << u"The pinned Atum profile requires Desktop enrollment and bound root ownership. The standalone legacy command client is unsupported.";
+        exit(EXIT_FAILURE);
+    }
     ctx.account->setCredentials(new TokenCredentials(std::move(ctx.options.username), std::move(ctx.options.token)));
     if (ctx.options.trustSSL) {
         QObject::connect(ctx.account->accessManager(), &QNetworkAccessManager::sslErrors, qApp,

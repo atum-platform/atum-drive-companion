@@ -37,6 +37,8 @@ public:
 
     void restartOauth() override;
     void forgetSensitiveData() override;
+    // Internal engine only; caller has verified OAuth issuer/subject against its native owner.
+    void acceptNativeOAuth(const QString &token, const QString &refreshToken);
 
 
 private Q_SLOTS:

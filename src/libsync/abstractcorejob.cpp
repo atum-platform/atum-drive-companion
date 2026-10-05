@@ -84,7 +84,9 @@ CoreJob::CoreJob(QNetworkReply *reply, QObject *parent)
     : QObject(parent)
     , _reply(reply)
 {
-    _reply->setParent(this);
+    if (_reply) {
+        _reply->setParent(this);
+    }
     connect(this, &CoreJob::finished, this, &CoreJob::deleteLater, Qt::QueuedConnection);
 }
 

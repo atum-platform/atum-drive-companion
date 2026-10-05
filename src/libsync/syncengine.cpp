@@ -27,6 +27,7 @@
 #include "filesystem.h"
 #include "owncloudpropagator.h"
 #include "propagatedownload.h"
+#include "theme.h"
 #include "vfs/vfs.h"
 
 #include <chrono>
@@ -309,6 +310,12 @@ void SyncEngine::startSync()
 
     _progressInfo->reset();
 
+    if (!syncOptions()._localRootValid()) {
+        Q_EMIT syncError(tr("The enrolled local root is unavailable or changed. Sync is paused."));
+        finalize(false);
+        return;
+    }
+
     if (!QFileInfo::exists(_localPath)) {
         // No _tr, it should only occur in non-mirall
         Q_EMIT syncError(QStringLiteral("Unable to find local sync folder."));
@@ -415,6 +422,8 @@ void SyncEngine::startSync()
     connect(_discoveryPhase.get(), &DiscoveryPhase::fatalError, this, &SyncEngine::abort);
     connect(_discoveryPhase.get(), &DiscoveryPhase::finished, this, &SyncEngine::slotDiscoveryFinished);
     connect(_discoveryPhase.get(), &DiscoveryPhase::silentlyExcluded, _syncFileStatusTracker.data(), &SyncFileStatusTracker::slotAddSilentlyExcluded);
+    connect(_discoveryPhase.get(), &DiscoveryPhase::excluded, _syncFileStatusTracker.data(), &SyncFileStatusTracker::slotAddSilentlyExcluded);
+    connect(_discoveryPhase.get(), &DiscoveryPhase::excluded, this, &SyncEngine::excluded);
 
     auto discoveryJob = new ProcessDirectoryJob(_discoveryPhase.get(), PinState::AlwaysLocal, _discoveryPhase.get());
     _discoveryPhase->startJob(discoveryJob);
@@ -525,6 +534,14 @@ void SyncEngine::slotDiscoveryFinished()
 
         // To announce the beginning of the sync
         Q_EMIT aboutToPropagate(_syncItems);
+
+        // Discovery uses pathnames: a mount or directory may have changed while it ran.
+        // Recheck before journal cleanup or applying inferred remote deletions.
+        if (!syncOptions()._localRootValid()) {
+            Q_EMIT syncError(tr("The enrolled local root is unavailable or changed. Sync is paused."));
+            finalize(false);
+            return;
+        }
 
         qCInfo(lcEngine) << u"#### Reconcile (aboutToPropagate OK) ####################################################" << _duration;
 
@@ -790,6 +807,9 @@ bool SyncEngine::isExcluded(QStringView filePath) const
 bool SyncEngine::loadDefaultExcludes()
 {
     ConfigFile::setupDefaultExcludeFilePaths(*_excludedFiles);
+    if (Theme::instance()->oauthIdentityProfile()) {
+        _excludedFiles->setAtumRootExclusions();
+    }
     return _excludedFiles->reloadExcludeFiles();
 }
 

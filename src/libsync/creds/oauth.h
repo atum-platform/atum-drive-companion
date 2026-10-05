@@ -17,11 +17,13 @@
 #include "libsync/creds/idtoken.h"
 #include "libsync/creds/jwt.h"
 #include "opencloudsynclib.h"
+#include "theme.h"
 
 #include <QNetworkReply>
 #include <QPointer>
 #include <QTcpServer>
 #include <QUrl>
+#include <functional>
 
 namespace OCC {
 class JsonJob;
@@ -60,10 +62,11 @@ public:
     Q_ENUM(TokenEndpointAuthMethods)
 
     enum class PromptValuesSupported : char { none = 0, consent = 1 << 0, select_account = 1 << 1, login = 1 << 2 };
-    Q_FLAG(PromptValuesSupported)
+    Q_ENUM(PromptValuesSupported)
     Q_DECLARE_FLAGS(PromptValuesSupportedFlags, PromptValuesSupported)
 
-    OAuth(const QUrl &serverUrl, QNetworkAccessManager *networkAccessManager, const QVariantMap &dynamicRegistrationData, QObject *parent);
+    OAuth(const QUrl &serverUrl, QNetworkAccessManager *networkAccessManager, const QVariantMap &dynamicRegistrationData, QObject *parent,
+        std::optional<OAuthIdentityProfile> identity = std::nullopt);
     ~OAuth() override;
 
     void setIdToken(IdToken &&idToken);
@@ -117,13 +120,17 @@ protected:
 
     QString _clientId;
     QString _clientSecret;
-    QString _scopes = QStringLiteral("openid offline_access email profile");
+    QString _scopes;
 
     QUrl _registrationEndpoint;
 
     virtual void fetchWellKnown();
 
     QNetworkReply *postTokenRequest(QUrlQuery &&queryItems);
+
+    bool identityProfileMatchesServer() const;
+    void verifyTokenIdentity(const QVariantMap &data, const IdToken &idToken, const QString &accessToken, std::function<void(bool)> completed);
+    const std::optional<OAuthIdentityProfile> _identity;
 
 
 private:
@@ -136,6 +143,7 @@ private:
 
     QUrl _authEndpoint;
     QUrl _tokenEndpoint;
+    QUrl _userInfoEndpoint;
     QByteArray _pkceCodeVerifier;
     QByteArray _state;
 
@@ -155,7 +163,7 @@ class OPENCLOUD_SYNC_EXPORT AccountBasedOAuth : public OAuth
     Q_OBJECT
 
 public:
-    explicit AccountBasedOAuth(AccountPtr account, QObject *parent = nullptr);
+    explicit AccountBasedOAuth(AccountPtr account, QObject *parent = nullptr, std::optional<OAuthIdentityProfile> identity = std::nullopt);
 
     void startAuthentication() override;
 

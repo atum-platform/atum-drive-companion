@@ -15,6 +15,7 @@
 #include <QtGlobal>
 
 #include "accountmanager.h"
+#include "atumengine.h"
 #include "common/restartmanager.h"
 #include "gui/application.h"
 #include "gui/folderman.h"
@@ -401,7 +402,8 @@ int main(int argc, char **argv)
 
         // Create a `Platform` instance so it can set-up/tear-down stuff for us, and do any
         // initialisation that needs to be done before creating a QApplication
-        const auto platform = Platform::create(Platform::Type::Gui);
+        const bool atumEngine = argc == 2 && QByteArray(argv[1]) == QByteArrayLiteral("--atum-engine");
+        const auto platform = Platform::create(atumEngine ? Platform::Type::Terminal : Platform::Type::Gui);
 
         // Create the (Q)Application instance:
         QApplication app(argc, argv);
@@ -409,6 +411,10 @@ int main(int argc, char **argv)
         app.setApplicationName(Theme::instance()->appName());
         app.setWindowIcon(Theme::instance()->applicationIcon());
         app.setApplicationVersion(Theme::instance()->versionSwitchOutput());
+
+        if (app.arguments() == QStringList{app.arguments().first(), QStringLiteral("--atum-engine")}) {
+            return runAtumEngine();
+        }
 
 #ifdef Q_OS_LINUX
         // HACK:
