@@ -3,6 +3,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QThread>
 #include <QtTest>
 
 using namespace OCC;
@@ -169,6 +170,25 @@ private Q_SLOTS:
         emitter.cancel();
         QTest::qWait(550);
         QCOMPARE(emitted.size(), 3);
+    }
+    void blockedOutputCannotProduceImmediateBurst()
+    {
+        QList<qint64> writes;
+        QElapsedTimer clock;
+        clock.start();
+        AtumEngineProgress emitter(
+            [&](const QJsonObject &) {
+                if (writes.isEmpty())
+                    QThread::msleep(600); // Real stdout writes can wait for pipe capacity.
+                writes.append(clock.elapsed());
+            },
+            this);
+        emitter.beginRun();
+        emitter.update(progress(true));
+        emitter.update(progress(true, 1));
+        QCOMPARE(writes.size(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(writes.size(), 2, 1000);
+        QVERIFY(writes[1] - writes[0] >= 500);
     }
 };
 

@@ -73,6 +73,7 @@ public:
     int numOldConflictItems() const { return _numOldConflictItems; }
     void setNumOldConflictItems(int n) { _numOldConflictItems = n; }
     int numErrorItems() const { return _numErrorItems; }
+    qint64 numExcludedItems() const { return _numExcludedItems; }
     bool hasUnresolvedConflicts() const { return _numNewConflictItems + _numOldConflictItems > 0; }
 
     const SyncFileItemPtr &firstItemNew() const { return _firstItemNew; }
@@ -109,6 +110,7 @@ private:
     int _numNewConflictItems = 0;
     int _numOldConflictItems = 0;
     int _numErrorItems = 0;
+    qint64 _numExcludedItems = 0;
 
     SyncFileItemPtr _firstItemNew;
     SyncFileItemPtr _firstItemDeleted;

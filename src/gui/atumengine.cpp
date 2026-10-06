@@ -207,7 +207,7 @@ int runAtumEngine()
                     std::max(qint64(result.numNewConflictItems()) + result.numOldConflictItems(), qint64(folder->journalDb()->conflictRecordPaths().size()));
                 fact({{QStringLiteral("kind"), QStringLiteral("sync")}, {QStringLiteral("lastSyncAt"), lastSyncAt}, {QStringLiteral("conflicts"), conflicts},
                     {QStringLiteral("errors"), std::max(qint64(result.numErrorItems()), qint64(result.errorStrings().size()))},
-                    {QStringLiteral("excluded"), excluded.size()}});
+                    {QStringLiteral("excluded"), result.numExcludedItems() + excluded.size()}});
             },
             Qt::DirectConnection);
         quota();

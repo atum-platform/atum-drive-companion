@@ -422,6 +422,7 @@ void SyncEngine::startSync()
     connect(_discoveryPhase.get(), &DiscoveryPhase::fatalError, this, &SyncEngine::abort);
     connect(_discoveryPhase.get(), &DiscoveryPhase::finished, this, &SyncEngine::slotDiscoveryFinished);
     connect(_discoveryPhase.get(), &DiscoveryPhase::silentlyExcluded, _syncFileStatusTracker.data(), &SyncFileStatusTracker::slotAddSilentlyExcluded);
+    connect(_discoveryPhase.get(), &DiscoveryPhase::silentlyExcluded, this, &SyncEngine::excluded);
     connect(_discoveryPhase.get(), &DiscoveryPhase::excluded, _syncFileStatusTracker.data(), &SyncFileStatusTracker::slotAddSilentlyExcluded);
     connect(_discoveryPhase.get(), &DiscoveryPhase::excluded, this, &SyncEngine::excluded);
 

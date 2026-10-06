@@ -33,8 +33,8 @@ namespace {
     }
     bool pattern(const QString &value)
     {
-        if (value.isEmpty() || value.toUtf8().size() > 256 || value.startsWith('/') || value.startsWith('\\')
-            || (value.size() >= 2 && value[0].isLetter() && value[1] == ':')) {
+        if (value.isEmpty() || value.toUtf8().size() > 256 || value.startsWith(QLatin1Char('/')) || value.startsWith(QLatin1Char('\\'))
+            || (value.size() >= 2 && value[0].isLetter() && value[1] == QLatin1Char(':'))) {
             return false;
         }
         for (auto c : value) {
@@ -42,8 +42,8 @@ namespace {
                 return false;
         }
         auto normalized = value;
-        normalized.replace('\\', '/');
-        return !normalized.split('/').contains(QStringLiteral(".."));
+        normalized.replace(QLatin1Char('\\'), QLatin1Char('/'));
+        return !normalized.split(QLatin1Char('/')).contains(QStringLiteral(".."));
     }
 }
 
@@ -238,8 +238,10 @@ void AtumEngineProgress::flush()
         _runVisible = next->value(QStringLiteral("active")).toBool();
     }
     if (next) {
-        _sinceEmit.start();
         _emit(*next);
+        // stdout can block on a full pipe. Measure the next interval after the
+        // write completes, so backpressure cannot produce an immediate burst.
+        _sinceEmit.start();
     }
     schedule();
 }
