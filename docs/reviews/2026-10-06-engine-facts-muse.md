@@ -27,6 +27,10 @@ Traced real APIs/signal order. No correctness/security regression requiring HOLD
 
 No narrow fix required.
 
+## Final local adjudication
+
+The corrected hosted source run `37485005305` at `e4baeaa26e88543c3f0c4b8fd974a94edaa58589` completed successfully in all four jobs. Pinned Qt 6.11.1 compilation and macOS ARM 36/36, Windows 37/37, Linux 39/39 CTest targets passed, including both the real producer and protocol target. The macOS x86 job found no tests and establishes compilation only. Linux analysis and unsigned packaging passed. Two later test-only formatting/copy-warning cleanups passed strict local CTest and changed-line clang-format, but are not covered by that older hosted head. A future final PR must pass its own checks. The retained review verdicts are WIP advice, with complete exclusion export and approved live S2/Atum-binary proof still held. No S4-8 merge, public release or production acceptance is claimed.
+
 ## Non-blocking notes (not blockers)
 
 * Pinned Craft6.11.1 adapter compile + real binary/loopback not done here — held to hosted CI by design.
