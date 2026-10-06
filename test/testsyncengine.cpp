@@ -53,9 +53,7 @@ private Q_SLOTS:
         QSet<QString> excluded;
         SyncResult result;
         connect(&folder.syncEngine(), &SyncEngine::excluded, this, [&](const QString &path) { excluded.insert(path); });
-        connect(&folder.syncEngine(), &SyncEngine::itemCompleted, this, [&](const SyncFileItemPtr &item) {
-            result.processCompletedItem(item);
-        });
+        connect(&folder.syncEngine(), &SyncEngine::itemCompleted, this, [&](const SyncFileItemPtr &item) { result.processCompletedItem(item); });
         folder.localModifier().insert(QStringLiteral(".env"));
         folder.localModifier().insert(QStringLiteral("silent-note"));
         folder.localModifier().insert(QStringLiteral("kept-note"));

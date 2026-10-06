@@ -102,7 +102,7 @@ private Q_SLOTS:
     }
     void malformedAcceptanceDoesNotCommit()
     {
-        for (const auto value : {QJsonValue(true), QJsonValue(QStringLiteral("quota")),
+        for (const auto &value : {QJsonValue(true), QJsonValue(QStringLiteral("quota")),
                  QJsonValue(QJsonArray{QStringLiteral("quota"), QStringLiteral("quota")}), QJsonValue(QJsonArray{QStringLiteral("trash")})}) {
             AtumEngineFeatures features({QStringLiteral("quota")});
             QVERIFY(!features.accepted(QStringLiteral("quota")));
