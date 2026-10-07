@@ -44,6 +44,10 @@ private:
 // legacy capability replies are deliberately outside this additive schema.
 bool atumEngineFactValid(const QJsonObject &message, const QJsonObject &previousProgress = {}, qint64 lastSyncAt = 0);
 
+// A complete presentation of the active native globs, or no authoritative
+// export. Matching rules are never changed to make a frame fit the contract.
+std::optional<QJsonObject> atumEngineExclusions(const QStringList &patterns);
+
 // One pending terminal for the last visible run, plus the latest snapshot of
 // the current run. Runs that finish before ever becoming visible can coalesce;
 // a visible run's terminal can never be overwritten by the next run.

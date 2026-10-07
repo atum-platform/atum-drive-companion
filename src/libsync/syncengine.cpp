@@ -824,6 +824,11 @@ bool SyncEngine::reloadExcludes()
     return _excludedFiles->reloadExcludeFiles();
 }
 
+std::optional<QStringList> SyncEngine::exclusionPatterns() const
+{
+    return _excludedFiles->exclusionPatterns();
+}
+
 void SyncEngine::addExcludeList(const QString &filePath)
 {
     _excludedFiles->addExcludeFilePath(filePath);

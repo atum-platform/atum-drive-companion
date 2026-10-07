@@ -7,6 +7,7 @@
 #include "fetchserversettings.h"
 #include "folderman.h"
 #include "libsync/configfile.h"
+#include "libsync/csync_exclude.h"
 #include "libsync/creds/oauth.h"
 #include "libsync/graphapi/spacesmanager.h"
 #include "libsync/progressdispatcher.h"
@@ -58,10 +59,17 @@ int runAtumEngine()
     qApp->setQuitOnLastWindowClosed(false);
     QObject lifetime;
     AtumEngineLines input;
-    // The complete upstream exclusions include a control-character glob that
-    // cannot be represented by 1.1. Preserve it and the app's pinned snapshot;
-    // never advertise a partial list. Trash is implemented in the next slice.
-    AtumEngineFeatures features({QStringLiteral("progress"), QStringLiteral("sync"), QStringLiteral("quota")});
+    QStringList offered{QStringLiteral("progress"), QStringLiteral("sync"), QStringLiteral("quota")};
+    // Preflight the full bundled rules before offering the capability. The
+    // bound folder's actual snapshot (including user additions) is exported
+    // only after enrollment, and only if its full load/export succeeds.
+    ExcludedFiles bundledExclusions;
+    bundledExclusions.addExcludeFilePath(ConfigFile::defaultExcludeFile());
+    bundledExclusions.setAtumRootExclusions();
+    const auto bundledPatterns = bundledExclusions.exclusionPatterns();
+    if (bundledPatterns && atumEngineExclusions(*bundledPatterns))
+        offered.append(QStringLiteral("exclusions"));
+    AtumEngineFeatures features(offered);
     QString root;
     QString subject;
     AccountStatePtr accountState;
@@ -178,6 +186,14 @@ int runAtumEngine()
         if (!folder->isReady())
             return;
         factsFolder = folder;
+        if (features.accepted(QStringLiteral("exclusions"))) {
+            const auto patterns = folder->syncEngine().exclusionPatterns();
+            if (patterns) {
+                const auto message = atumEngineExclusions(*patterns);
+                if (message)
+                    fact(*message);
+            }
+        }
         QObject::connect(folder, &Folder::syncStateChange, &lifetime, [&, folder] {
             if (folder->syncResult().status() != SyncResult::SyncRunning || runActive || failed || forgetting || stopping)
                 return;

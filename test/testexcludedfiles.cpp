@@ -5,8 +5,10 @@
  *
  */
 
+#include "gui/atumengineprotocol.h"
 #include "libsync/configfile.h"
 
+#include <QJsonArray>
 #include <QtTest>
 
 #include "libsync/csync_exclude.h"
@@ -596,6 +598,100 @@ private Q_SLOTS:
         line = "\\";
         csync_exclude_expand_escapes(line);
         QVERIFY(0 == strcmp(line.constData(), "\\"));
+    }
+
+    void exclusion_patterns_snapshot_requires_complete_reload()
+    {
+        setup();
+        QVERIFY(!excludedFiles->exclusionPatterns().has_value());
+
+        excludedFiles->addExcludeFilePath(ConfigFile::defaultExcludeFile());
+        QVERIFY(excludedFiles->reloadExcludeFiles());
+        auto patterns = excludedFiles->exclusionPatterns();
+        QVERIFY(patterns.has_value());
+        QVERIFY(patterns->contains(QStringLiteral("]Icon\r*")));
+
+        excludedFiles->setAtumRootExclusions();
+        patterns = excludedFiles->exclusionPatterns();
+        QVERIFY(patterns.has_value());
+        QVERIFY(patterns->contains(QStringLiteral(".env*")));
+
+        excludedFiles->addManualExclude(QStringLiteral("manual-private-*"));
+        patterns = excludedFiles->exclusionPatterns();
+        QVERIFY(patterns.has_value());
+        QVERIFY(patterns->contains(QStringLiteral("manual-private-*")));
+
+        excludedFiles->clearManualExcludes();
+        patterns = excludedFiles->exclusionPatterns();
+        QVERIFY(patterns.has_value());
+        QVERIFY(!patterns->contains(QStringLiteral("manual-private-*")));
+
+        auto temporary = OCC::TestUtils::createTempDir();
+        QVERIFY(temporary.isValid());
+        excludedFiles->addExcludeFilePath(temporary.filePath(QStringLiteral("missing-excludes.lst")));
+        QVERIFY(!excludedFiles->reloadExcludeFiles());
+        QVERIFY(!excludedFiles->exclusionPatterns().has_value());
+        QCOMPARE(check_file_full(QStringLiteral(".DS_Store")), CSYNC_FILE_SILENTLY_EXCLUDED);
+    }
+
+    void control_character_projection_keeps_match_disposition()
+    {
+        ExcludedFiles raw;
+        ExcludedFiles projected;
+        raw.setWildcardsMatchSlash(false);
+        projected.setWildcardsMatchSlash(false);
+        raw.addManualExclude(QStringLiteral("]Icon\r*"));
+        projected.addManualExclude(QStringLiteral("]Icon[\\r]*"));
+        raw.addManualExclude(QStringLiteral("ordinary-*"));
+        projected.addManualExclude(QStringLiteral("ordinary-*"));
+
+        for (const auto &name : {QStringLiteral("Icon\r"), QStringLiteral("Icon\rmetadata"), QStringLiteral("ordinary-file")}) {
+            QCOMPARE(raw.fullPatternMatch(name, ItemTypeFile), projected.fullPatternMatch(name, ItemTypeFile));
+        }
+        QCOMPARE(raw.fullPatternMatch(QStringLiteral("Icon\r"), ItemTypeFile), CSYNC_FILE_SILENTLY_EXCLUDED);
+        QCOMPARE(projected.fullPatternMatch(QStringLiteral("ordinary-file"), ItemTypeFile), CSYNC_FILE_EXCLUDE_LIST);
+        QCOMPARE(projected.fullPatternMatch(QStringLiteral("Icon\\r"), ItemTypeFile), CSYNC_NOT_EXCLUDED);
+    }
+
+    void invalid_native_regex_is_not_an_authoritative_snapshot()
+    {
+        setup();
+        excludedFiles->setAtumRootExclusions();
+        QVERIFY(excludedFiles->exclusionPatterns());
+        excludedFiles->addManualExclude(QStringLiteral("[z-a]"));
+        QVERIFY(!excludedFiles->exclusionPatterns());
+        excludedFiles->clearManualExcludes();
+        QVERIFY(excludedFiles->exclusionPatterns());
+    }
+
+    void complete_native_snapshot_round_trips_to_equivalent_matching()
+    {
+        setup();
+        excludedFiles->addExcludeFilePath(ConfigFile::defaultExcludeFile());
+        excludedFiles->setAtumRootExclusions();
+        const auto snapshot = excludedFiles->exclusionPatterns();
+        QVERIFY(snapshot);
+        const auto message = atumEngineExclusions(*snapshot);
+        QVERIFY(message);
+        QVERIFY(atumEngineFactValid(*message));
+        ExcludedFiles projected;
+        projected.setWildcardsMatchSlash(false);
+        for (const auto pattern : message->value(QStringLiteral("patterns")).toArray())
+            projected.addManualExclude(pattern.toString());
+
+        for (const auto &name : {QStringLiteral("Icon\r"), QStringLiteral("folder/Icon\rmetadata"), QStringLiteral("Icon\\r"), QStringLiteral("Iconr"),
+                 QStringLiteral("ICON\r"), QStringLiteral("Icon\r/child"),
+                 QStringLiteral(".DS_Store"), QStringLiteral(".env.production"), QStringLiteral("key.pem"), QStringLiteral("token.txt"),
+                 QStringLiteral(".git"), QStringLiteral("node_modules"), QStringLiteral("folder/.git"), QStringLiteral("report.pdf")}) {
+            for (const auto type : {ItemTypeFile, ItemTypeDirectory}) {
+                QCOMPARE(excludedFiles->fullPatternMatch(name, type), projected.fullPatternMatch(name, type));
+                QCOMPARE(excludedFiles->traversalPatternMatch(name, type), projected.traversalPatternMatch(name, type));
+            }
+        }
+        for (ushort character = 0; character <= 0xff; ++character) {
+            const auto name = QStringLiteral("Icon") + QChar(character);
+            QCOMPARE(excludedFiles->fullPatternMatch(name, ItemTypeFile), projected.fullPatternMatch(name, ItemTypeFile));
+        }
     }
 
     void check_version_directive()

@@ -180,6 +180,38 @@ bool atumEngineFactValid(const QJsonObject &m, const QJsonObject &previousProgre
     return false;
 }
 
+std::optional<QJsonObject> atumEngineExclusions(const QStringList &patterns)
+{
+    QJsonArray exported;
+    QSet<QString> seen;
+    for (auto value : patterns) {
+        // Native prepare() ignores leading CR/LF entries. Do not turn those
+        // inactive entries into effective desktop rules by projecting them.
+        if (value.startsWith(QLatin1Char('\r')) || value.startsWith(QLatin1Char('\n')))
+            return std::nullopt;
+        if (value.contains(QLatin1Char('\r'))) {
+            // Both native and desktop glob translators preserve bracket
+            // expressions as regex character classes. [\\r] matches exactly
+            // CR without carrying a control byte in the wire glob. Keep this
+            // projection conservative: existing classes or escapes need their
+            // own equivalence proof before they can be rewritten.
+            if (value.contains(QLatin1Char('[')) || value.contains(QLatin1Char('\\')))
+                return std::nullopt;
+            value.replace(QLatin1Char('\r'), QStringLiteral("[\\r]"));
+        }
+        if (!pattern(value))
+            return std::nullopt;
+        if (!seen.contains(value)) {
+            seen.insert(value);
+            exported.append(value);
+            if (exported.size() > 256)
+                return std::nullopt;
+        }
+    }
+    const QJsonObject message{{QStringLiteral("kind"), QStringLiteral("exclusions")}, {QStringLiteral("patterns"), exported}};
+    return atumEngineFactValid(message) ? std::optional(message) : std::nullopt;
+}
+
 AtumEngineProgress::AtumEngineProgress(std::function<void(const QJsonObject &)> callback, QObject *parent)
     : QObject(parent)
     , _emit(std::move(callback))

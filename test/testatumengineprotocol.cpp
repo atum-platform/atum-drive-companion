@@ -142,6 +142,45 @@ private Q_SLOTS:
         });
         QCOMPARE(valid, vector.value(QStringLiteral("expected")).toObject().value(QStringLiteral("verdict")) == QStringLiteral("accept"));
     }
+    void completeExclusionsUseCompatibleGlobs()
+    {
+        const QStringList raw{QStringLiteral("]Icon\r*"), QStringLiteral(".env*"), QStringLiteral(".git/"), QStringLiteral("*token*"),
+            QStringLiteral(".env*")};
+        const auto message = atumEngineExclusions(raw);
+        QVERIFY(message);
+        QVERIFY(atumEngineFactValid(*message));
+        QCOMPARE(message->value(QStringLiteral("patterns")).toArray(),
+            QJsonArray({QStringLiteral("]Icon[\\r]*"), QStringLiteral(".env*"), QStringLiteral(".git/"), QStringLiteral("*token*")}));
+        QCOMPARE(raw.first(), QStringLiteral("]Icon\r*"));
+        const auto wire = AtumEngineLines::encode(*message);
+        QVERIFY(!wire.contains('\r'));
+        AtumEngineLines reader;
+        QVERIFY(reader.append(wire, [&](const QJsonObject &decoded) { return decoded == *message && atumEngineFactValid(decoded); }));
+
+        AtumEngineFeatures legacy({QStringLiteral("exclusions")});
+        QVERIFY(legacy.acceptStart({{QStringLiteral("kind"), QStringLiteral("start")}}));
+        QVERIFY(!legacy.accepted(QStringLiteral("exclusions")));
+        AtumEngineFeatures current({QStringLiteral("exclusions")});
+        QVERIFY(current.acceptStart({{QStringLiteral("kind"), QStringLiteral("start")},
+            {QStringLiteral("features"), QJsonArray{QStringLiteral("exclusions")}}}));
+        QVERIFY(current.accepted(QStringLiteral("exclusions")));
+    }
+    void exclusionsNeverExportAPartialList()
+    {
+        for (const auto &invalid : {QStringLiteral("\rfoo"), QStringLiteral("\nfoo"), QStringLiteral("bad\nname"), QStringLiteral("bad\tname"), QStringLiteral("[a\r]"),
+                 QStringLiteral("escaped\\\r"), QStringLiteral("../private"), QStringLiteral("/absolute"), QString(257, QLatin1Char('a'))}) {
+            QVERIFY(!atumEngineExclusions({QStringLiteral(".env*"), invalid, QStringLiteral(".git/")}));
+        }
+        QVERIFY(!atumEngineExclusions({}));
+        QStringList many;
+        for (int i = 0; i < 257; ++i)
+            many.append(QString::number(i));
+        QVERIFY(!atumEngineExclusions(many));
+        QStringList large;
+        for (int i = 0; i < 100; ++i)
+            large.append(QString::number(i) + QString(200, QLatin1Char('a')));
+        QVERIFY(!atumEngineExclusions(large));
+    }
     void emissionPacingAndTerminalSurvivesNextRun()
     {
         QList<QJsonObject> emitted;
