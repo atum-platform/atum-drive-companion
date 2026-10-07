@@ -689,7 +689,7 @@ private Q_SLOTS:
             }
         }
         for (ushort character = 0; character <= 0xff; ++character) {
-            const auto name = QStringLiteral("Icon") + QChar(character);
+            const QString name = QStringLiteral("Icon") + QChar(character);
             QCOMPARE(excludedFiles->fullPatternMatch(name, ItemTypeFile), projected.fullPatternMatch(name, ItemTypeFile));
         }
     }
