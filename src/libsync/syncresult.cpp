@@ -96,6 +96,9 @@ void SyncResult::clearErrors()
 
 void SyncResult::processCompletedItem(const SyncFileItemPtr &item)
 {
+    if (item->_status == SyncFileItem::Excluded || item->_status == SyncFileItem::FileIgnored)
+        ++_numExcludedItems;
+
     if (Progress::isWarningKind(item->_status)) {
         // Count any error conditions, error strings will have priority anyway.
         _foundFilesNotSynced = true;

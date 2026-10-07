@@ -26,6 +26,7 @@
 #include <QSet>
 #include <QSharedPointer>
 #include <QString>
+#include <QStringList>
 #include <QThread>
 
 #include <optional>
@@ -78,6 +79,7 @@ public:
     bool loadDefaultExcludes();
     bool reloadExcludes();
     void clearManualExcludes();
+    std::optional<QStringList> exclusionPatterns() const;
 
     SyncFileStatusTracker &syncFileStatusTracker() { return *_syncFileStatusTracker; }
 

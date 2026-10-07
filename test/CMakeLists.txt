@@ -74,6 +74,9 @@ opencloud_add_test(LongPath)
 opencloud_add_test(FolderMan)
 opencloud_add_test(AtumRootBinding)
 opencloud_add_test(AtumRootFolder)
+opencloud_add_test(AtumEngineProtocol)
+target_sources(testatumengineprotocol PRIVATE ../src/gui/atumengineprotocol.cpp)
+target_sources(testexcludedfiles PRIVATE ../src/gui/atumengineprotocol.cpp)
 # Exercise the actual enrollment widget; its private class is not exported by OpenCloudGui.
 target_sources(testatumrootfolder PRIVATE
     ../src/gui/newwizard/pages/accountconfiguredwizardpage.cpp
