@@ -645,12 +645,18 @@ private Q_SLOTS:
         raw.addManualExclude(QStringLiteral("ordinary-*"));
         projected.addManualExclude(QStringLiteral("ordinary-*"));
 
-        for (const auto &name : {QStringLiteral("Icon\r"), QStringLiteral("Icon\rmetadata"), QStringLiteral("ordinary-file")}) {
+        for (const auto &name : {QStringLiteral("Icon\r"), QStringLiteral("Icon\rmetadata"), QStringLiteral("Icon\\r"), QStringLiteral("ordinary-file")}) {
             QCOMPARE(raw.fullPatternMatch(name, ItemTypeFile), projected.fullPatternMatch(name, ItemTypeFile));
         }
-        QCOMPARE(raw.fullPatternMatch(QStringLiteral("Icon\r"), ItemTypeFile), CSYNC_FILE_SILENTLY_EXCLUDED);
         QCOMPARE(projected.fullPatternMatch(QStringLiteral("ordinary-file"), ItemTypeFile), CSYNC_FILE_EXCLUDE_LIST);
+#ifdef _WIN32
+        // Windows rejects CR and backslash before evaluating the exclusion patterns.
+        QCOMPARE(raw.fullPatternMatch(QStringLiteral("Icon\r"), ItemTypeFile), CSYNC_FILE_EXCLUDE_INVALID_CHAR);
+        QCOMPARE(projected.fullPatternMatch(QStringLiteral("Icon\\r"), ItemTypeFile), CSYNC_FILE_EXCLUDE_INVALID_CHAR);
+#else
+        QCOMPARE(raw.fullPatternMatch(QStringLiteral("Icon\r"), ItemTypeFile), CSYNC_FILE_SILENTLY_EXCLUDED);
         QCOMPARE(projected.fullPatternMatch(QStringLiteral("Icon\\r"), ItemTypeFile), CSYNC_NOT_EXCLUDED);
+#endif
     }
 
     void invalid_native_regex_is_not_an_authoritative_snapshot()
