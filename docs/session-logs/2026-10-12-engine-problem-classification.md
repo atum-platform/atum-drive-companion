@@ -47,3 +47,17 @@ Coordinator review rechecked every enum value, the `success` boolean fence,
 Success/Problem handling, and the existing sync-fact warning counters. No
 blocking source finding remains; exact-head compilation/tests are still the
 ship gate.
+
+Integration follow-up:
+
+- The independently shippable `Problem -> ready` subset merged to `main` in
+  PR #5 at `489d9312238ade24230224bfdf0e963f57f0e805` after the exact-head
+  Linux, Windows, Apple Silicon, Intel macOS, and clang-tidy gates passed.
+- PR #4 was then merged with that new `main`. Its four mechanical conflicts
+  kept the branch-only 1.1 additions (`atumEngineRunSucceeded`, protocol tests,
+  and excluded-file facts) on top of the now-authoritative mapping and focused
+  status test from `main`.
+- PR #4 remains intentionally draft. A new exact-head hosted matrix must pass
+  after this integration, and leaving draft still requires the separate real-
+  binary synthetic-realm acceptance gate; this merge does not weaken or bypass
+  that gate.
