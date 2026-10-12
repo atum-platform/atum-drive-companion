@@ -45,6 +45,33 @@ namespace {
     }
 }
 
+QString atumEngineFolderState(SyncResult::Status status)
+{
+    switch (status) {
+    case SyncResult::Success:
+    case SyncResult::Problem:
+        return QStringLiteral("ready");
+    case SyncResult::SyncRunning:
+    case SyncResult::Queued:
+        return QStringLiteral("syncing");
+    case SyncResult::Undefined:
+        return QStringLiteral("connecting");
+    case SyncResult::Offline:
+        return QStringLiteral("offline");
+    case SyncResult::Paused:
+        return QStringLiteral("paused");
+    case SyncResult::Error:
+    case SyncResult::SetupError:
+        return QStringLiteral("error");
+    }
+    Q_UNREACHABLE();
+}
+
+bool atumEngineRunSucceeded(bool engineSuccess, SyncResult::Status status)
+{
+    return engineSuccess && (status == SyncResult::Success || status == SyncResult::Problem);
+}
+
 int runAtumEngine()
 {
 #ifndef Q_OS_UNIX
@@ -217,7 +244,7 @@ int runAtumEngine()
                 if (features.accepted(QStringLiteral("progress")))
                     progress.update(progressSnapshot(false));
                 const auto result = folder->syncResult();
-                if (success && result.status() == SyncResult::Success && result.syncTime().isValid())
+                if (atumEngineRunSucceeded(success, result.status()) && result.syncTime().isValid())
                     lastSyncAt = std::max(lastSyncAt, result.syncTime().toMSecsSinceEpoch());
                 const auto conflicts =
                     std::max(qint64(result.numNewConflictItems()) + result.numOldConflictItems(), qint64(folder->journalDb()->conflictRecordPaths().size()));
@@ -262,28 +289,7 @@ int runAtumEngine()
             state(QStringLiteral("offline"));
             return;
         }
-        const auto status = folders->folders().first()->syncResult().status();
-        switch (status) {
-        case SyncResult::Success:
-            state(QStringLiteral("ready"));
-            break;
-        case SyncResult::SyncRunning:
-        case SyncResult::Queued:
-            state(QStringLiteral("syncing"));
-            break;
-        case SyncResult::Undefined:
-            state(QStringLiteral("connecting"));
-            break;
-        case SyncResult::Offline:
-            state(QStringLiteral("offline"));
-            break;
-        case SyncResult::Paused:
-            state(QStringLiteral("paused"));
-            break;
-        default:
-            state(QStringLiteral("error"));
-            break;
-        }
+        state(atumEngineFolderState(folders->folders().first()->syncResult().status()));
     };
     const auto wire = [&] {
         QObject::connect(accountState.get(), &AccountState::stateChanged, &lifetime, [&](AccountState::State value) {
