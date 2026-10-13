@@ -2,10 +2,13 @@
 
 Build from the complete GPL repository using the official Craft SDK. Pass
 `-DOEM_THEME_DIR=<source>/oem/atum -DATUM_DRIVE_PROFILE=s2` for the disposable test
-build, or `production` for the separately identified production build. A missing
-or unknown profile stops configuration. The test and production applications have
-different bundle IDs and credential-store service names. Profiles are compiled
-into the binary; no preferences or dynamic registration can replace them.
+build, `h2` for the separately authorized H2 acceptance realm, or `production` for
+the separately identified production build. A missing or unknown profile stops
+configuration. S2, H2 and production applications have different bundle IDs and
+credential-store service names. Profiles are compiled into the binary; no
+preferences or dynamic registration can replace them. The H2 profile is an
+acceptance artifact only: it is never signed or published as an Atum release and
+must not be used after that realm's recorded authority expires.
 
 The client is public, uses random IPv4 loopback redirects with PKCE and state, and
 requests only `openid`. Virtual files, automatic updates, crash uploading and HTTP

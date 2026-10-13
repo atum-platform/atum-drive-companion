@@ -1,0 +1,37 @@
+{
+  "schema": "atum.drive.compiled-profiles/1",
+  "oauthClientId": "01JDRVCMPNXQ7R8S9T0V2W3X4Y",
+  "profiles": {
+    "production": {
+      "origin": "https://drive.atumplatform.com",
+      "issuer": "https://auth.atumplatform.com/",
+      "applicationShortName": "AtumDrive",
+      "applicationName": "Atum Drive",
+      "applicationExecutable": "atum-drive",
+      "bundleIdentifier": "com.atumplatform.drive"
+    },
+    "s2": {
+      "origin": "https://spike-drive.atumplatform.com",
+      "issuer": "https://spike-auth.atumplatform.com/",
+      "applicationShortName": "AtumDriveTest",
+      "applicationName": "Atum Drive Test",
+      "applicationExecutable": "atum-drive-test",
+      "bundleIdentifier": "com.atumplatform.drive.test"
+    },
+    "h2": {
+      "origin": "https://realm-h2-drive.atumplatform.com",
+      "issuer": "https://realm-h2-auth.atumplatform.com/",
+      "applicationShortName": "AtumDriveH2",
+      "applicationName": "Atum Drive H2",
+      "applicationExecutable": "atum-drive-h2",
+      "bundleIdentifier": "com.atumplatform.drive.h2"
+    }
+  },
+  "h2Source": {
+    "repository": "atum-platform/atum-platform",
+    "commit": "01e171c9081c56a6f359cd6ee3e1428ff6c8cbdd",
+    "endpointPath": "deploy/drive/synthetic-realm/endpoint_profiles.py",
+    "clientPath": "deploy/drive/synthetic-realm/prepare.py",
+    "scope": "identity only; a separate unexpired authority receipt is required for live use"
+  }
+}

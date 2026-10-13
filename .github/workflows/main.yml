@@ -37,7 +37,10 @@ jobs:
       actions: read
       security-events: write
     strategy:
-        fail-fast: true
+        # One external runner/registry failure must not erase the other three
+        # platforms' independent diagnostic and acceptance evidence. The
+        # overall workflow still fails until every matrix job is green.
+        fail-fast: false
         matrix:
             include:
             - target: windows-cl-msvc2022-x86_64
@@ -80,7 +83,9 @@ jobs:
               os: ubuntu-latest
               clang_tidy: true
               container:
-                image: invent-registry.kde.org/sysadmin/ci-images/craft-appimage-alma9:latest
+                # Exact bytes from the last successful full PR run (38245152609).
+                # Avoid mutable-tag resolution and keep the toolchain reproducible.
+                image: invent-registry.kde.org/sysadmin/ci-images/craft-appimage-alma9@sha256:41dd698b4c6c4035ca5216077170006642712f59dab27cbb3dd41e814af8448b
                 # GNOME Secret Service needs memory locking for real custody tests.
                 options: --cap-add=IPC_LOCK
 
@@ -189,6 +194,11 @@ jobs:
     - name: Install dependencies
       run: |
           & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --install-deps opencloud/opencloud-desktop
+
+    - name: Verify immutable Atum profile contract
+      if: ${{ matrix.target == 'linux-gcc-x86_64' }}
+      run: |
+        python3 "${env:GITHUB_WORKSPACE}/test/verifyatumprofiles.py"
 
     - name: QML format lint
       if: matrix.target  == 'linux-gcc-x86_64'
@@ -335,6 +345,42 @@ jobs:
         & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --run cmake -S "${env:GITHUB_WORKSPACE}" -B "$buildDir" "-DOEM_THEME_DIR=${env:GITHUB_WORKSPACE}/oem/atum" -DATUM_DRIVE_PROFILE=s2 -DBUILD_TESTING=ON
         & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --run cmake --build "$buildDir" --target testatumrootbinding testatumrootfolder --parallel 2
         & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --run ctest --test-dir "$buildDir" -R '^testatumroot(binding|folder)$' --output-on-failure --no-tests=error --output-junit "${env:GITHUB_WORKSPACE}/binaries/atum-root-profile.xml"
+
+    - name: Build H2 Atum profile after generic checks
+      if: ${{ github.event_name == 'pull_request' && matrix.target == 'macos-clang-arm64' }}
+      timeout-minutes: 30
+      run: |
+        # Generic tests and the ordinary portable artifact above stay generic.
+        # H2 is a second, acceptance-only build with disjoint identity.
+        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --set "args=-DOEM_THEME_DIR=${env:GITHUB_WORKSPACE}/oem/atum -DATUM_DRIVE_PROFILE=h2" opencloud/opencloud-desktop
+        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache opencloud/opencloud-desktop
+
+    - name: Prove compiled H2 engine hello
+      if: ${{ github.event_name == 'pull_request' && matrix.target == 'macos-clang-arm64' }}
+      timeout-minutes: 5
+      run: |
+        $buildDir = (& "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --get buildDir -q opencloud/opencloud-desktop).Trim()
+        $engine = Get-ChildItem -Path $buildDir -Recurse -File -Filter AtumDriveH2 |
+          Where-Object { $_.FullName -match '\.app[/\\]Contents[/\\]MacOS[/\\]AtumDriveH2$' } |
+          Select-Object -First 1
+        $header = Join-Path $buildDir "src/libsync/atumprofile.h"
+        if (-not $engine) { throw "Compiled AtumDriveH2 app executable was not found" }
+        if (-not (Test-Path $header -PathType Leaf)) { throw "Compiled H2 profile header was not found" }
+        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --run python3 "${env:GITHUB_WORKSPACE}/.github/workflows/prove-atum-engine-hello.py" --profile "${env:GITHUB_WORKSPACE}/test/fixtures/atum-drive-profiles.json" --header $header $engine.FullName
+
+    - name: Package H2 acceptance artifact
+      if: ${{ github.event_name == 'pull_request' && matrix.target == 'macos-clang-arm64' }}
+      timeout-minutes: 15
+      run: |
+        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache --package --options "[Packager]PackageType=PortablePackager" opencloud/opencloud-desktop
+        $package = Get-ChildItem "${home}/craft/binaries/opencloud-desktop-HEAD-*-${{ matrix.target }}.tar.xz" |
+          Sort-Object LastWriteTime -Descending |
+          Select-Object -First 1
+        if (-not $package) { throw "Packaged H2 Apple Silicon artifact was not found" }
+        $destination = "${env:GITHUB_WORKSPACE}/binaries/atum-drive-h2-${{ github.run_number }}-${{ matrix.target }}.tar.xz"
+        Copy-Item $package.FullName $destination
+        $sha256 = (Get-FileHash -Algorithm SHA256 $destination).Hash.ToLowerInvariant()
+        Set-Content -Path "$destination.sha256" -Value $sha256 -NoNewline
 
     - name: Upload binary artifacts
       uses: actions/upload-artifact@v7

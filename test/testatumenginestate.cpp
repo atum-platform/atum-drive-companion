@@ -22,6 +22,15 @@ private Q_SLOTS:
         QCOMPARE(atumEngineFolderState(SyncResult::Error), QStringLiteral("error"));
         QCOMPARE(atumEngineFolderState(SyncResult::SetupError), QStringLiteral("error"));
     }
+
+    void completedWithIgnoredFilesAdvancesSuccessTime()
+    {
+        QVERIFY(atumEngineRunSucceeded(true, SyncResult::Success));
+        QVERIFY(atumEngineRunSucceeded(true, SyncResult::Problem));
+        QVERIFY(!atumEngineRunSucceeded(false, SyncResult::Success));
+        QVERIFY(!atumEngineRunSucceeded(false, SyncResult::Problem));
+        QVERIFY(!atumEngineRunSucceeded(true, SyncResult::Error));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestAtumEngineState)

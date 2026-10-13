@@ -1,0 +1,15 @@
+{
+  "contract": "atum.drive-engine/1.1",
+  "source_repository": "https://github.com/atum-platform/atum-app",
+  "source_commit": "743e7e7744b96ccebdfe156518cf35e638c72ff0",
+  "source_pull_request": "https://github.com/atum-platform/atum-app/pull/436",
+  "pack_sha256": "d273a1e201425d28b479f2614415575cd1cd695efbb1b6fbc81d04ff2f851ccb",
+  "vendor_record_sha256": "7aa92c79e13b0e52295f1a6fbc61852bcc36d813c8892b77bf4df320985ba46b",
+  "source_files": {
+    "apps/desktop/electron/matrix/__fixtures__/drive-engine-1.1/facts.jsonl": "facts.jsonl",
+    "apps/desktop/electron/matrix/__fixtures__/drive-engine-1.1/handshake.jsonl": "handshake.jsonl",
+    "apps/desktop/electron/matrix/__fixtures__/drive-engine-1.1/invalid.jsonl": "invalid.jsonl",
+    "apps/desktop/electron/matrix/__fixtures__/drive-engine-1.1/trash.jsonl": "trash.jsonl",
+    "docs/contracts/2026-10-06-drive-engine-1.1.md": "2026-10-06-drive-engine-1.1.md"
+  }
+}

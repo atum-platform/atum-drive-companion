@@ -45,6 +45,29 @@ class TestSyncEngine : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void exclusionFactsObserveOrdinaryAndSilentItemsWithoutUpload()
+    {
+        FakeFolder folder(FileInfo::A12_B12_C12_S12(), Vfs::Mode::Off, false);
+        folder.syncEngine().addManualExclude(QStringLiteral(".env"));
+        folder.syncEngine().addManualExclude(QStringLiteral("]silent-note"));
+        QSet<QString> excluded;
+        SyncResult result;
+        connect(&folder.syncEngine(), &SyncEngine::excluded, this, [&](const QString &path) { excluded.insert(path); });
+        connect(&folder.syncEngine(), &SyncEngine::itemCompleted, this, [&](const SyncFileItemPtr &item) { result.processCompletedItem(item); });
+        folder.localModifier().insert(QStringLiteral(".env"));
+        folder.localModifier().insert(QStringLiteral("silent-note"));
+        folder.localModifier().insert(QStringLiteral("kept-note"));
+        QVERIFY(folder.applyLocalModificationsAndSync());
+        QCOMPARE(result.numExcludedItems(), qint64(1));
+        QVERIFY(excluded.contains(QStringLiteral("silent-note")));
+        QVERIFY(!excluded.contains(QStringLiteral("kept-note")));
+        QVERIFY(!folder.currentRemoteState().find(QStringLiteral(".env")));
+        QVERIFY(!folder.currentRemoteState().find(QStringLiteral("silent-note")));
+        QVERIFY(folder.currentRemoteState().find(QStringLiteral("kept-note")));
+        result.reset();
+        QCOMPARE(result.numExcludedItems(), qint64(0));
+    }
+
     void boundRootLossAfterDiscoveryDoesNotDeleteRemoteFile()
     {
         FakeFolder folder(FileInfo::A12_B12_C12_S12(), Vfs::Mode::Off, false);
