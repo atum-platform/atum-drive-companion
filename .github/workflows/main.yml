@@ -37,7 +37,10 @@ jobs:
       actions: read
       security-events: write
     strategy:
-        fail-fast: true
+        # One external runner/registry failure must not erase the other three
+        # platforms' independent diagnostic and acceptance evidence. The
+        # overall workflow still fails until every matrix job is green.
+        fail-fast: false
         matrix:
             include:
             - target: windows-cl-msvc2022-x86_64

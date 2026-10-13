@@ -80,3 +80,9 @@ The workflow now pins those exact previously proven bytes rather than asking the
 registry for a mutable tag. This is a reproducibility/supply-chain correction on
 the standard GitHub-hosted runner, not a self-hosted fallback or a disguised
 unchanged rerun. A fresh commit and complete exact-head run are still required.
+
+The digest endpoint also returned HTTP 502, proving a registry-wide outage. The
+matrix now keeps `fail-fast` off so that this one external Linux initialization
+failure cannot cancel independent Windows/macOS checks or the required H2 proof.
+The workflow and pull request still fail while Linux is red; this does not weaken
+the merge gate, reroute Linux, or turn partial evidence into acceptance.
