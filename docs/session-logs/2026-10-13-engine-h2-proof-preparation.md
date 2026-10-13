@@ -67,3 +67,16 @@ the final push. One targeted follow-up is reserved only if the retained primary
 result still requires it after exact-head CI. The primary review's renewed-realm
 requirement remains the later live-sync dependency, not something this source
 checkpoint fabricates.
+
+## Hosted infrastructure correction
+
+The first current-head CI attempt and its one allowed unchanged rerun both failed
+before checkout: the KDE registry returned HTTP 502 while GitHub initialized the
+Linux job container, and fail-fast canceled Windows and both macOS jobs. No source
+or test step ran. The last successful full PR run (`38245152609`) records that
+`craft-appimage-alma9:latest` resolved to
+`sha256:41dd698b4c6c4035ca5216077170006642712f59dab27cbb3dd41e814af8448b`.
+The workflow now pins those exact previously proven bytes rather than asking the
+registry for a mutable tag. This is a reproducibility/supply-chain correction on
+the standard GitHub-hosted runner, not a self-hosted fallback or a disguised
+unchanged rerun. A fresh commit and complete exact-head run are still required.
