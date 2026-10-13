@@ -37,11 +37,13 @@ reproducible-build claim.
 
 Compared with OpenCloud Desktop v4.0.0, this tree adds or changes:
 
-- `oem/atum/`: the Atum product profile (name, bundle identifier, fixed Drive
+- `oem/atum/`: the Atum product profiles (name, bundle identifier, fixed Drive
   origin `https://drive.atumplatform.com`, fixed sign-in issuer
   `https://auth.atumplatform.com/`, public OAuth client id, CC0 artwork). The
-  build refuses to configure without an explicit profile. `s2` is a disposable
-  test profile; releases use `production`.
+  build refuses to configure without an explicit profile. `s2` is the retired
+  disposable S2 profile, `h2` is the current separately authorized acceptance
+  realm, and releases use `production`. H2 has its own bundle/keychain identity
+  and is never a release artifact.
 - `src/gui/atumengine.*`: the `--atum-engine` mode, a background process that
   speaks a small newline-delimited JSON protocol on stdin/stdout.
 - `src/gui/atumrootbinding.*`, `src/gui/atumfilemetadata.*`: binding one sync
@@ -109,6 +111,13 @@ notifications off, and `CMAKE_OSX_DEPLOYMENT_TARGET=14.0`. The build produces
 
 To build and run the Atum tests as well, add `-DBUILD_TESTING=ON` and build the
 targets `testatumrootbinding` and `testatumrootfolder`.
+
+For the approved H2 acceptance realm, replace `production` above with `h2`. A
+pull-request Apple Silicon lane does this automatically, executes the compiled
+engine far enough to verify its closed H2 identity and offered 1.1 features,
+then uploads the unsigned test bundle. That hello receipt is not the remaining
+folder-ready/accepted-only/live-sync proof and does not authorize extending an
+expired realm.
 
 ### 3. Assemble the bundle
 
