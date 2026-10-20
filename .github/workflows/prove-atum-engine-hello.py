@@ -42,20 +42,33 @@ def macro_values(header: Path) -> dict[str, str]:
     return values
 
 
+def engine_executable(build_dir: Path, expected: dict[str, str]) -> Path:
+    short_name = expected["applicationShortName"]
+    path = build_dir / "bin" / f"{short_name}.app" / "Contents" / "MacOS" / short_name
+    try:
+        executable = path.resolve(strict=True)
+    except FileNotFoundError:
+        stop(f"compiled H2 engine is missing from target output path {path}")
+    if not executable.is_file():
+        stop("compiled H2 engine target output must be a regular file")
+    return executable
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", required=True, type=Path)
     parser.add_argument("--header", required=True, type=Path)
-    parser.add_argument("executable", type=Path)
+    parser.add_argument("--build-dir", required=True, type=Path)
     args = parser.parse_args()
-    executable = args.executable.resolve(strict=True)
     header = args.header.resolve(strict=True)
     profile_file = args.profile.resolve(strict=True)
-    if not executable.is_file() or not header.is_file() or not profile_file.is_file():
-        stop("H2 proof inputs must be regular files")
+    build_dir = args.build_dir.resolve(strict=True)
+    if not build_dir.is_dir() or not header.is_file() or not profile_file.is_file():
+        stop("H2 proof inputs require a build directory and regular header/profile files")
 
     contract = json.loads(profile_file.read_text(encoding="utf-8"))
     expected = contract["profiles"]["h2"]
+    executable = engine_executable(build_dir, expected)
     configured = macro_values(header)
     for field in ("origin", "issuer"):
         if configured[field] != expected[field]:

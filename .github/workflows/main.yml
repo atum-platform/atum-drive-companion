@@ -352,33 +352,38 @@ jobs:
       run: |
         # Generic tests and the ordinary portable artifact above stay generic.
         # H2 is a second, acceptance-only build with disjoint identity.
+        $buildDir = (& "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --get buildDir -q opencloud/opencloud-desktop).Trim()
+        if (-not (Test-Path "$buildDir/CMakeCache.txt" -PathType Leaf)) { throw "Missing verified Craft build directory" }
+        $engineBundle = Join-Path $buildDir "bin/AtumDriveH2.app"
+        Remove-Item -Recurse -Force $engineBundle -ErrorAction SilentlyContinue
         & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --set "args=-DOEM_THEME_DIR=${env:GITHUB_WORKSPACE}/oem/atum -DATUM_DRIVE_PROFILE=h2" opencloud/opencloud-desktop
-        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache opencloud/opencloud-desktop
+        # --no-cache controls binary-cache use; it does not invalidate Craft's
+        # installed-package record. Force this second configured build to run.
+        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache --ignoreInstalled opencloud/opencloud-desktop
 
     - name: Prove compiled H2 engine hello
       if: ${{ github.event_name == 'pull_request' && matrix.target == 'macos-clang-arm64' }}
       timeout-minutes: 5
       run: |
         $buildDir = (& "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --get buildDir -q opencloud/opencloud-desktop).Trim()
-        $engine = Get-ChildItem -Path $buildDir -Recurse -File -Filter AtumDriveH2 |
-          Where-Object { $_.FullName -match '\.app[/\\]Contents[/\\]MacOS[/\\]AtumDriveH2$' } |
-          Select-Object -First 1
+        $engine = Join-Path $buildDir "bin/AtumDriveH2.app/Contents/MacOS/AtumDriveH2"
         $header = Join-Path $buildDir "src/libsync/atumprofile.h"
-        if (-not $engine) { throw "Compiled AtumDriveH2 app executable was not found" }
+        if (-not (Test-Path $engine -PathType Leaf)) { throw "Compiled AtumDriveH2 app executable was not found at the target output path" }
         if (-not (Test-Path $header -PathType Leaf)) { throw "Compiled H2 profile header was not found" }
-        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --run python3 "${env:GITHUB_WORKSPACE}/.github/workflows/prove-atum-engine-hello.py" --profile "${env:GITHUB_WORKSPACE}/test/fixtures/atum-drive-profiles.json" --header $header $engine.FullName
+        $architectures = (& /usr/bin/lipo -archs $engine).Trim()
+        if ($architectures -ne "arm64") { throw "Compiled H2 engine architecture was '$architectures', expected exactly 'arm64'" }
+        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --run python3 "${env:GITHUB_WORKSPACE}/.github/workflows/prove-atum-engine-hello.py" --profile "${env:GITHUB_WORKSPACE}/test/fixtures/atum-drive-profiles.json" --header $header --build-dir $buildDir
 
     - name: Package H2 acceptance artifact
       if: ${{ github.event_name == 'pull_request' && matrix.target == 'macos-clang-arm64' }}
       timeout-minutes: 15
       run: |
+        $package = Join-Path "${home}/craft/binaries" "opencloud-desktop-HEAD-${{ github.run_number }}-${{ matrix.target }}.tar.xz"
+        Remove-Item -Force $package -ErrorAction SilentlyContinue
         & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache --package --options "[Packager]PackageType=PortablePackager" opencloud/opencloud-desktop
-        $package = Get-ChildItem "${home}/craft/binaries/opencloud-desktop-HEAD-*-${{ matrix.target }}.tar.xz" |
-          Sort-Object LastWriteTime -Descending |
-          Select-Object -First 1
-        if (-not $package) { throw "Packaged H2 Apple Silicon artifact was not found" }
+        if (-not (Test-Path $package -PathType Leaf)) { throw "Packaged H2 Apple Silicon artifact was not found at the current-run path" }
         $destination = "${env:GITHUB_WORKSPACE}/binaries/atum-drive-h2-${{ github.run_number }}-${{ matrix.target }}.tar.xz"
-        Copy-Item $package.FullName $destination
+        Copy-Item $package $destination
         $sha256 = (Get-FileHash -Algorithm SHA256 $destination).Hash.ToLowerInvariant()
         Set-Content -Path "$destination.sha256" -Value $sha256 -NoNewline
 
