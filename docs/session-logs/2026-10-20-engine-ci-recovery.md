@@ -1,11 +1,13 @@
 # Drive exact-head CI recovery receipt
 
-This receipt covers draft engine PR
+This receipt begins with draft engine PR
 [#4](https://github.com/atum-platform/atum-drive-companion/pull/4) at exact
 head `69f567e3016757c0cc946240d522bc34f66478e4`. The isolated recovery
 worktree is `/Users/NM/Projects/atum-drive-companion-worktrees/ci-recovery-1020`
 on branch `fix/engine-ci-recovery`. The older primary-checkout revision
 `e9836a471cb89164636cf3dafa40b2ab1106b057` is not current-head evidence.
+Later exact-head follow-ups are recorded below rather than rewriting the earlier
+run's evidence.
 
 ## Failure classification
 
@@ -118,6 +120,66 @@ this worker. Hosted proof necessarily follows coordinator assembly, review and
 push; the draft PR still points to unchanged head
 `69f567e3016757c0cc946240d522bc34f66478e4`.
 
+## Exact-head H2 packaging follow-up
+
+PR head `e006b2dd63370e685843847df3008ed2f53679cf` ran as GitHub run
+[`39408488220`](https://github.com/atum-platform/atum-drive-companion/actions/runs/39408488220).
+Windows, Intel macOS and Linux passed. Apple Silicon job
+[`118580149645`](https://github.com/atum-platform/atum-drive-companion/actions/runs/39408488220/job/118580149645)
+proved that the preceding recovery worked: the H2 build installed
+`AtumDriveH2.app/Contents/MacOS/AtumDriveH2`, and the exact target then passed
+the `arm64` check plus its closed H2 plist, header and real hello contract.
+
+The subsequent package action selected the wrong application:
+
+```text
+Packaging .../archive/Applications/KDE/OpenCloud Beta.app
+```
+
+The pinned OpenCloud blueprint at
+`4b5f539521b7a68d51417faffe5278694a68996f` explains that selection. Its
+`applicationExecutable` property returns `opencloud_beta` for beta builds, and
+`createPackage()` unconditionally derives `OpenCloud Beta.app` from the beta
+flag. No supported dynamic option in that revision overrides those values. The
+pinned Craft macOS packager then resolves that app path, bundles dependencies,
+checks every packaged binary for forbidden absolute dependencies, and calls
+`CodeSign.signMacApp`; with signing disabled, that call uses Craft's local
+ad-hoc signer. The hosted log reaches `Checking for absolute library paths in
+package...` and then reports only that the package action returned false. It
+does not expose a bad dependency or signing error, so the exact terminal return
+inside those preserved checks is not claimed here.
+
+The local follow-up adds a temporary H2 package option to only that exact
+blueprint revision and exact source hash. The patch runs after the ordinary
+portable package has already completed. Its default remains false, preserving
+generic packaging; when explicitly enabled for the H2 action, it selects
+`AtumDriveH2` as both the application name and executable, which makes the
+existing `apppath`, executable filter, dependency bundler, absolute-dependency
+validation and local signing operate on the actual H2 bundle. Any upstream
+revision, source-byte or anchor drift fails closed rather than receiving a
+best-effort edit.
+
+The current-run archive is still deleted and addressed by its exact run-number
+path. Before it is copied to the H2 artifact name, the proof now safely extracts
+that archive and requires:
+
+- the only root application to be `AtumDriveH2.app`, with no generic
+  `OpenCloud.app` or `OpenCloud Beta.app` substitution;
+- exactly one regular `Contents/MacOS/AtumDriveH2` executable;
+- an exact `arm64` Mach-O architecture and a strict deep-valid app signature;
+  and
+- the expected plist/header identity plus the extracted executable's real
+  hello/stop result.
+
+Focused local tests compile a small real arm64 Mach-O executable and dylib,
+bundle the dylib through `@rpath`, ad-hoc sign the bundle, archive it, and pass
+the package proof. A mixed H2/generic archive and a signature-tampered archive
+both fail. The blueprint anchor test also proves source drift fails closed.
+Python compilation, profile-contract verification, workflow YAML parsing and
+`git diff --check` are included in the final local verification. A full Craft
+download/build was not attempted with 1.9 GiB free, below the 3 GiB task limit.
+This worker did not push, rerun or trigger CI.
+
 ## Remaining acceptance
 
 Do not infer a green result from the three successful attempt-2 jobs or an older
@@ -140,6 +202,6 @@ The recovery does not close the acceptance gates retained in
   runtime proves atomic non-overwrite/keep-both restore behavior and the restore
   quota outcomes. No client-only restore fallback is accepted.
 
-Application source and dependency pins remain unchanged. This follow-up changes
-only the H2 workflow/build-proof path and this receipt; it does not alter engine
-runtime behavior or weaken any live acceptance gate.
+Application source and dependency pins remain unchanged. These follow-ups change
+only the H2 workflow/package-proof path, its focused fixture and this receipt;
+they do not alter engine runtime behavior or weaken any live acceptance gate.

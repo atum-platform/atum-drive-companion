@@ -378,10 +378,18 @@ jobs:
       if: ${{ github.event_name == 'pull_request' && matrix.target == 'macos-clang-arm64' }}
       timeout-minutes: 15
       run: |
+        # The generic package above remains untouched. The pinned upstream
+        # blueprint otherwise hardcodes OpenCloud Beta for every later package.
+        $blueprintRepository = Join-Path "${home}/craft/CraftMaster/blueprints" "craft-blueprints-opencloud"
+        python3 "${env:GITHUB_WORKSPACE}/.github/workflows/prepare-atum-h2-package.py" --repository $blueprintRepository
+        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --set "atumH2Package=true" opencloud/opencloud-desktop
         $package = Join-Path "${home}/craft/binaries" "opencloud-desktop-HEAD-${{ github.run_number }}-${{ matrix.target }}.tar.xz"
         Remove-Item -Force $package -ErrorAction SilentlyContinue
         & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --no-cache --package --options "[Packager]PackageType=PortablePackager" opencloud/opencloud-desktop
         if (-not (Test-Path $package -PathType Leaf)) { throw "Packaged H2 Apple Silicon artifact was not found at the current-run path" }
+        $buildDir = (& "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --get buildDir -q opencloud/opencloud-desktop).Trim()
+        $header = Join-Path $buildDir "src/libsync/atumprofile.h"
+        & "${env:GITHUB_WORKSPACE}/.github/workflows/.craft.ps1" -c --run python3 "${env:GITHUB_WORKSPACE}/.github/workflows/prove-atum-engine-hello.py" --profile "${env:GITHUB_WORKSPACE}/test/fixtures/atum-drive-profiles.json" --header $header --archive $package --expected-architecture arm64
         $destination = "${env:GITHUB_WORKSPACE}/binaries/atum-drive-h2-${{ github.run_number }}-${{ matrix.target }}.tar.xz"
         Copy-Item $package $destination
         $sha256 = (Get-FileHash -Algorithm SHA256 $destination).Hash.ToLowerInvariant()
