@@ -87,3 +87,34 @@ Production executable SHA256 before bundle assembly/signing:
 b757a18f5e571425e460d09c4975dd03b9e9a296de3914399318d235f60f474d.
 This is not release readiness: independent review, exact-head hosted checks,
 bundle assembly/signing/restaging and installed recovery remain outstanding.
+
+## Engine-process regression follow-up
+
+Independent review approved the cleanup classifier contract but found that its
+tests stopped at the extracted settlement logic. They did not prove the real
+zero-job path through account restore, `signOutByUi()`, account save, protocol
+output and process shutdown. The follow-up adds a production-profile subprocess
+regression using a disposable config with one exact-identity account and no
+`Credentials`, `CredentialOperations/pending` or
+`CredentialOperations/failed` keys. It sends the same startup `cleanup` frame
+as the desktop, closes stdin immediately to exercise EOF racing the deferred
+cleanup stop, and requires one `disconnected` state, exit zero and unchanged
+sync-root file bytes. The subprocess receives isolated `HOME` and `TMPDIR`
+directories and its empty credential inventory prevents any Keychain job or
+external request from being scheduled.
+
+The process shutdown path now has its own `stopped` latch inside `stop()`.
+`stopping` cannot provide this guard: cleanup sets it before queuing `stop()`,
+and stdin EOF may call `stop()` before that queued callback. The independent
+latch makes folder teardown, account-manager shutdown and `qApp->quit()`
+idempotent without weakening the existing protocol-output gates.
+
+The credential-job timeout remains 30 seconds **per OS Keychain attempt**.
+Deletion-after-timeout, a fenced late write, a repeated delete and event-loop
+or persistence work can add overhead, so 30 seconds is not a hard overall
+cleanup deadline.
+
+`AccountManager::save()` still returns `void`; a settings write can therefore
+fail without making the SignedOut persistence result observable to the engine.
+That is a separate durability/diagnostic gap, not evidence that credentials
+were retained, and is deliberately not broadened into this bounded fix.

@@ -119,6 +119,7 @@ int runAtumEngine()
     bool forgetting = false;
     bool failed = false;
     bool stopping = false;
+    bool stopped = false;
     QJsonObject previousProgress;
     qint64 lastSyncAt = 0;
     qint64 sentSyncAt = 0;
@@ -145,6 +146,9 @@ int runAtumEngine()
         &lifetime);
 
     const auto stop = [&] {
+        if (stopped)
+            return;
+        stopped = true;
         stopping = true;
         progress.cancel();
         if (folders) {

@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "gui/atumengine.h"
 
+#include <QDir>
+#include <QFile>
+#include <QJsonDocument>
+#include <QProcess>
+#include <QProcessEnvironment>
+#include <QSettings>
+#include <QTemporaryDir>
+#include <QUrl>
+#include <QUuid>
 #include <QtTest>
 
 using namespace OCC;
@@ -74,6 +83,104 @@ private Q_SLOTS:
         QCOMPARE(*result, QStringLiteral("disconnected"));
         QVERIFY(!completion.finishCleanupIfSettled(false, false));
         QVERIFY(!completion.finishCleanupIfSettled(true, true));
+    }
+
+    void zeroCredentialCleanupProcessExitsOnceAndPreservesFiles()
+    {
+        constexpr auto issuer = "https://auth.atumplatform.com/";
+        constexpr auto origin = "https://drive.atumplatform.com";
+        constexpr auto subject = "synthetic-zero-job-owner";
+        const QByteArray preservedContents("synthetic user file\n");
+        QTemporaryDir sandbox;
+        QVERIFY(sandbox.isValid());
+
+        QDir sandboxDir(sandbox.path());
+        QVERIFY(sandboxDir.mkpath(QStringLiteral("config")));
+        QVERIFY(sandboxDir.mkpath(QStringLiteral("home")));
+        QVERIFY(sandboxDir.mkpath(QStringLiteral("tmp")));
+        QVERIFY(sandboxDir.mkpath(QStringLiteral("Drive")));
+        const auto configDir = sandboxDir.filePath(QStringLiteral("config"));
+        const auto rootDir = sandboxDir.filePath(QStringLiteral("Drive"));
+        const auto preservedPath = QDir(rootDir).filePath(QStringLiteral("preserved.txt"));
+
+        QFile preserved(preservedPath);
+        QVERIFY(preserved.open(QIODevice::WriteOnly));
+        QCOMPARE(preserved.write(preservedContents), preservedContents.size());
+        preserved.close();
+
+        const auto configPath = QDir(configDir).filePath(QStringLiteral("atum-drive.cfg"));
+        {
+            QSettings settings(configPath, QSettings::IniFormat);
+            settings.beginWriteArray(QStringLiteral("Accounts"), 1);
+            settings.setArrayIndex(0);
+            settings.setValue(QStringLiteral("url"), QUrl(QString::fromLatin1(origin)));
+            settings.setValue(QStringLiteral("display-name"), QStringLiteral("Synthetic cleanup owner"));
+            settings.setValue(QStringLiteral("uuid"), QUuid(QStringLiteral("{4f1c23f0-44bd-4c41-a32b-9dd4943e9b77}")));
+            settings.setValue(QStringLiteral("atum-issuer"), QString::fromLatin1(issuer));
+            settings.setValue(QStringLiteral("atum-subject"), QString::fromLatin1(subject));
+            settings.setValue(QStringLiteral("default_sync_root"), rootDir);
+            settings.endArray();
+            settings.sync();
+            QCOMPARE(settings.status(), QSettings::NoError);
+            for (const auto &key : settings.allKeys()) {
+                QVERIFY2(!key.startsWith(QStringLiteral("Credentials/")), qPrintable(key));
+                QVERIFY2(!key.startsWith(QStringLiteral("CredentialOperations/")), qPrintable(key));
+            }
+        }
+
+        QProcess process;
+        auto environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(QStringLiteral("HOME"), sandboxDir.filePath(QStringLiteral("home")));
+        environment.insert(QStringLiteral("TMPDIR"), sandboxDir.filePath(QStringLiteral("tmp")));
+        environment.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
+        process.setProcessEnvironment(environment);
+        process.setProcessChannelMode(QProcess::SeparateChannels);
+        process.start(QStringLiteral(ATUM_ENGINE_EXE), {QStringLiteral("--atum-engine")});
+        QVERIFY2(process.waitForStarted(), qPrintable(process.errorString()));
+
+        const QJsonObject request{{QStringLiteral("kind"), QStringLiteral("cleanup")}, {QStringLiteral("issuer"), QString::fromLatin1(issuer)},
+            {QStringLiteral("subject"), QString::fromLatin1(subject)}, {QStringLiteral("configDir"), configDir}};
+        const auto frame = QJsonDocument(request).toJson(QJsonDocument::Compact) + '\n';
+        QCOMPARE(process.write(frame), qint64(frame.size()));
+        QVERIFY(process.waitForBytesWritten());
+        // Exercise the race between the queued cleanup stop and stdin EOF.
+        process.closeWriteChannel();
+        if (!process.waitForFinished(10'000)) {
+            const auto error = process.errorString();
+            process.kill();
+            process.waitForFinished();
+            QFAIL(qPrintable(error));
+        }
+
+        QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+        QCOMPARE(process.exitCode(), 0);
+        const auto standardOutput = process.readAllStandardOutput();
+        const auto standardError = process.readAllStandardError();
+        QList<QJsonObject> messages;
+        for (const auto &line : standardOutput.split('\n')) {
+            if (line.isEmpty())
+                continue;
+            QJsonParseError error;
+            const auto document = QJsonDocument::fromJson(line, &error);
+            QVERIFY2(error.error == QJsonParseError::NoError && document.isObject(), standardOutput.constData());
+            messages.append(document.object());
+        }
+        QCOMPARE(messages.size(), 2);
+        QCOMPARE(messages.at(0).value(QStringLiteral("kind")).toString(), QStringLiteral("hello"));
+        QCOMPARE(messages.at(0).value(QStringLiteral("issuer")).toString(), QString::fromLatin1(issuer));
+        QCOMPARE(messages.at(0).value(QStringLiteral("origin")).toString(), QString::fromLatin1(origin));
+        QCOMPARE(messages.at(1), QJsonObject({{QStringLiteral("kind"), QStringLiteral("state")}, {QStringLiteral("state"), QStringLiteral("disconnected")}}));
+
+        QFile preservedAfter(preservedPath);
+        QVERIFY(preservedAfter.open(QIODevice::ReadOnly));
+        QCOMPARE(preservedAfter.readAll(), preservedContents);
+        QSettings settingsAfter(configPath, QSettings::IniFormat);
+        QCOMPARE(settingsAfter.status(), QSettings::NoError);
+        for (const auto &key : settingsAfter.allKeys()) {
+            QVERIFY2(!key.startsWith(QStringLiteral("Credentials/")), qPrintable(key));
+            QVERIFY2(!key.startsWith(QStringLiteral("CredentialOperations/")), qPrintable(key));
+        }
+        QVERIFY2(!standardError.toLower().contains("keychain"), standardError.constData());
     }
 };
 
