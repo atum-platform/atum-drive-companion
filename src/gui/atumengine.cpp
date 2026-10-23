@@ -72,6 +72,20 @@ bool atumEngineRunSucceeded(bool engineSuccess, SyncResult::Status status)
     return engineSuccess && (status == SyncResult::Success || status == SyncResult::Problem);
 }
 
+std::optional<QString> AtumEngineCleanupCompletion::finishCleanupIfSettled(bool pending, bool failed)
+{
+    if (_finished)
+        return std::nullopt;
+    if (failed) {
+        _finished = true;
+        return QStringLiteral("cleanup_failed");
+    }
+    if (pending)
+        return std::nullopt;
+    _finished = true;
+    return QStringLiteral("disconnected");
+}
+
 int runAtumEngine()
 {
 #ifndef Q_OS_UNIX
@@ -113,6 +127,7 @@ int runAtumEngine()
     QSet<QString> excluded;
     bool runActive = false;
     bool upload = false, download = false;
+    AtumEngineCleanupCompletion cleanupCompletion;
     AtumEngineProgress progress(
         [&](const QJsonObject &message) {
             if (!features.accepted(QStringLiteral("progress")) || forgetting || failed || stopping)
@@ -291,6 +306,20 @@ int runAtumEngine()
         }
         state(atumEngineFolderState(folders->folders().first()->syncResult().status()));
     };
+    const auto finishCleanupIfSettled = [&] {
+        if (!forgetting || !accountState)
+            return;
+        const auto terminalState = cleanupCompletion.finishCleanupIfSettled(
+            accountState->credentialCleanupPending(), accountState->credentialCleanupFailed());
+        if (!terminalState)
+            return;
+        // Credential-operation persistence failure can be reported
+        // synchronously from inside signOutByUi(). Defer destruction until
+        // that stack has unwound.
+        stopping = true;
+        state(*terminalState);
+        QTimer::singleShot(0, &lifetime, stop);
+    };
     const auto wire = [&] {
         QObject::connect(accountState.get(), &AccountState::stateChanged, &lifetime, [&](AccountState::State value) {
             if (value == AccountState::SignedOut)
@@ -302,12 +331,7 @@ int runAtumEngine()
         QObject::connect(folders.get(), &FolderMan::folderSyncStateChange, &lifetime, report);
         QObject::connect(folders.get(), &FolderMan::folderListChanged, &lifetime, attachFacts);
         QObject::connect(accountState->account()->spacesManager(), &GraphApi::SpacesManager::spaceChanged, &lifetime, [&](GraphApi::Space *) { quota(); });
-        QObject::connect(accountState.get(), &AccountState::credentialCleanupChanged, &lifetime, [&] {
-            if (forgetting && !accountState->credentialCleanupPending()) {
-                state(accountState->credentialCleanupFailed() ? QStringLiteral("cleanup_failed") : QStringLiteral("disconnected"));
-                stop();
-            }
-        });
+        QObject::connect(accountState.get(), &AccountState::credentialCleanupChanged, &lifetime, finishCleanupIfSettled);
     };
     const auto enroll = [&] {
         auto *spaces = accountState->account()->spacesManager();
@@ -366,6 +390,7 @@ int runAtumEngine()
                 folders->setSyncEnabled(false);
                 accountState->signOutByUi();
                 AccountManager::instance()->save();
+                finishCleanupIfSettled();
                 return true;
             }
             if (kind == QStringLiteral("file_metadata")) {
@@ -437,6 +462,7 @@ int runAtumEngine()
                     forgetting = true;
                     accountState->signOutByUi();
                     AccountManager::instance()->save();
+                    finishCleanupIfSettled();
                     return true;
                 }
                 if (!folders->loadFolders().has_value() || folders->folders().size() > 1) {
