@@ -42,6 +42,7 @@ target_sources(OpenCloudGui PRIVATE
     atumrootbinding.cpp
     atumfilemetadata.cpp
     atumengine.cpp
+    atumengineprotocol.cpp
     folder.cpp
     folderdefinition.cpp
     folderman.cpp

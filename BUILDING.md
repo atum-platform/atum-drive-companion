@@ -5,7 +5,44 @@ that ships inside the Atum desktop app for macOS. The engine is a modified
 version of OpenCloud Desktop. It runs as its own program; the Atum app starts
 it and talks to it over standard input and output.
 
-## Which releases this source belongs to
+## Atum Drive engine 0.20.17 source-offer record
+
+This record describes the engine prepared for Atum desktop 0.20.17. It is
+separate from the historical 0.18 record below.
+
+| | |
+|---|---|
+| Publication status | Prepared source-offer record; `drive-engine-0.20.17` tag and release are not yet published |
+| Atum desktop release | 0.20.17 for macOS on Apple silicon |
+| Location in the app | `Contents/Resources/drive-engine/AtumDriveEngine.app` |
+| Engine name and version | Atum Drive 4.0.0, bundle identifier `com.atumplatform.drive`, executable `AtumDrive` |
+| Compiled source revision | `919d5ddaca626098712632a54428d5bab8f571bd` |
+| Reviewed documentation head | `f0309c60544c0eb6bf73c85740c834a0d1730a6e`; its only delta from the compiled revision is `docs/session-logs/2026-10-23-cleanup-empty-credentials.md` |
+| Source-offer tag | `drive-engine-0.20.17`, to be created on the completed documentation descendant after source checks and before publication; the tag commit is deliberately not claimed to be the compiled revision |
+| Upstream base | OpenCloud Desktop v4.0.0, commit `9f701e6db2e101cb3247d3331647a60266e83b0f`, https://github.com/opencloud-eu/desktop |
+
+The release manifest must retain the actual compiled source revision above.
+The future source tag contains that implementation plus the reviewed build,
+licence and source-offer documentation needed to reproduce and understand the
+distributed bundle. Record the final tag commit separately when the tag is
+created; never replace the compiled revision with the documentation tag SHA.
+
+Hashes for the prepared 0.20.17 engine are:
+
+- unsigned `AtumDrive` SHA-256:
+  `53741d34db72413701492d166d2f319c5ff3229e80030a86554f4344f76b82cb`;
+- Developer ID-signed `AtumDrive` SHA-256:
+  `2681e4747ceee503eff986cc8e530dbb12038dcee0d4035b611828a31026ea55`;
+- deterministic unsigned bundle inventory SHA-256:
+  `52e462198fb1a09dee66d187ffdd21f2da63691ad4faa696134a5876ad27aa5a`;
+- signed runtime bundle inventory SHA-256:
+  `073719dce3f53c7134411adab7431ec546d62254b527763d33e02403ab8ebc04`.
+
+Signing changes Mach-O bytes and therefore changes both the executable and
+bundle hashes. The unsigned hash is the assembly input; the signed executable
+and runtime bundle hashes are the values the desktop manifest must enforce.
+
+## Historical 0.18 release record
 
 | | |
 |---|---|
@@ -37,11 +74,13 @@ reproducible-build claim.
 
 Compared with OpenCloud Desktop v4.0.0, this tree adds or changes:
 
-- `oem/atum/`: the Atum product profile (name, bundle identifier, fixed Drive
+- `oem/atum/`: the Atum product profiles (name, bundle identifier, fixed Drive
   origin `https://drive.atumplatform.com`, fixed sign-in issuer
   `https://auth.atumplatform.com/`, public OAuth client id, CC0 artwork). The
-  build refuses to configure without an explicit profile. `s2` is a disposable
-  test profile; releases use `production`.
+  build refuses to configure without an explicit profile. `s2` is the retired
+  disposable S2 profile, `h2` is the current separately authorized acceptance
+  realm, and releases use `production`. H2 has its own bundle/keychain identity
+  and is never a release artifact.
 - `src/gui/atumengine.*`: the `--atum-engine` mode, a background process that
   speaks a small newline-delimited JSON protocol on stdin/stdout.
 - `src/gui/atumrootbinding.*`, `src/gui/atumfilemetadata.*`: binding one sync
@@ -52,10 +91,111 @@ Compared with OpenCloud Desktop v4.0.0, this tree adds or changes:
 - Tests for the above in `test/`, plus CI and design notes in `.github/` and
   `docs/`.
 
-`git diff 9f701e6db2e101cb3247d3331647a60266e83b0f` against upstream shows
-every change. Atum made these changes between 2 and 3 October 2026.
+`git diff 9f701e6db2e101cb3247d3331647a60266e83b0f 919d5ddaca626098712632a54428d5bab8f571bd`
+against upstream shows the compiled 0.20.17 change set. The initial 0.18 engine
+was prepared between 2 and 3 October 2026; later commits add the reviewed 1.1
+facts, custody and cleanup behavior recorded in this repository.
 
-## Build
+## Atum Drive engine 0.20.17 unsigned build and assembly
+
+### Current toolchain and dependency record
+
+The prepared bundle was built on Apple silicon with:
+
+| Component | Version or revision |
+|---|---|
+| Xcode / macOS SDK | Xcode 27.0 (`27A266a`), SDK 27.0, Apple Clang 21.0.0 |
+| Minimum macOS | 14.0 for `AtumDrive`; bundled dependencies have compatible minimums of 13.0, 13.3 or 14.0 |
+| Qt | 6.11.1 |
+| QtKeychain | 0.16.0 |
+| libre-graph-api-cpp-qt-client | 1.0.7 |
+| KDSingleApplication | 1.2.0 |
+| OpenSSL / ICU / SQLite | 3.6.3 / 78.1 / 3.50.4 |
+| GLib / FreeType / HarfBuzz | 2.86.0 / 2.14.1 / 11.2.0 |
+| ECM / CMake / Ninja | 6.29.0 / 4.1.4 / 1.13.2 |
+| KDE Craft blueprints | `11b07503ab24e84affc5ed9c94093f8b03b05fd4` |
+| OpenCloud Craft blueprints | `4b5f539521b7a68d51417faffe5278694a68996f` |
+| Craft Core | `b80e8f8c6c4f9fc8c09464dc8b696bfa625fa12c` |
+
+`.craft.shelf` is the machine-readable authority for the complete dependency
+set. The 0.20.17 bundle intentionally keeps OpenSSL 3.6.3 and the existing
+pins; historical planning notes proposing other versions are not build input.
+
+### Configure and build
+
+Restore the pinned Craft SDK as described in the historical commands below,
+then configure a fresh production build. The embedded Atum engine does not ship
+the FinderSync extension, so use `BUILD_SHELL_INTEGRATION=OFF`:
+
+```sh
+SOURCE_DIR=/path/to/atum-drive-companion-at-919d5dda
+BUILD_DIR=/new/path/atum-drive-production-build
+SDK_DIR=/path/to/craft/macos-clang-arm64
+
+"$SDK_DIR/dev-utils/bin/cmake" -S "$SOURCE_DIR" -B "$BUILD_DIR" -G Ninja \
+  -DCMAKE_MAKE_PROGRAM="$SDK_DIR/dev-utils/bin/ninja" \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_PREFIX_PATH="$SDK_DIR" \
+  -DCMAKE_C_COMPILER=/usr/bin/cc \
+  -DCMAKE_CXX_COMPILER=/usr/bin/c++ \
+  -DOEM_THEME_DIR="$SOURCE_DIR/oem/atum" \
+  -DATUM_DRIVE_PROFILE=production \
+  -DBUILD_TESTING=ON \
+  -DBUILD_SHELL_INTEGRATION=OFF
+"$SDK_DIR/dev-utils/bin/cmake" --build "$BUILD_DIR" --parallel 2
+```
+
+Run the native state, protocol, root-binding and root-folder tests appropriate
+to the production profile before assembly. Exact-head CI and review are
+additional evidence; they do not replace the source/toolchain record.
+
+### Reproducible unsigned assembly
+
+Use the repository recipe with a new output directory:
+
+```sh
+scripts/assemble-atum-engine-unsigned.sh \
+  --build-dir "$BUILD_DIR" \
+  --source-dir "$SOURCE_DIR" \
+  --sdk-dir "$SDK_DIR" \
+  --output-dir /new/path/unsigned-engine-output \
+  --compiled-source 919d5ddaca626098712632a54428d5bab8f571bd \
+  --reviewed-head f0309c60544c0eb6bf73c85740c834a0d1730a6e \
+  --source-tag drive-engine-0.20.17 \
+  --source-archive /path/to/compiled-source-919d5dda.tar \
+  --reviewed-source-archive /path/to/reviewed-documentation-source.tar \
+  --implementation-equivalence-receipt /path/to/equivalence.txt \
+  --craft-override /path/to/craft-override.ini
+```
+
+The recipe runs `macdeployqt` with `-no-plugins -no-codesign -no-strip`, copies
+only the Cocoa/minimal platform plugins and Secure Transport TLS plugin, fixes
+the minimal plugin's FreeType reference, removes absolute build/SDK rpaths,
+sets `LSUIElement`, renames the bundle, and writes deterministic file, Mach-O,
+toolchain and source-provenance receipts. It never signs, installs, notarizes or
+deploys anything and never reads a signing identity.
+
+The retained unsigned bundle contains 48 arm64 Mach-O files and 134 canonical
+file/link inventory entries. Its main executable records macOS minOS 14.0 and
+SDK 27.0; every non-system dependency resolves inside the bundle and no
+absolute build or SDK rpath remains.
+
+The unsigned assembled bundle is not expected to launch on Apple silicon after
+load-command changes invalidate linker ad-hoc signatures. The recipe therefore
+proves hello/stop against the exact pre-assembly production executable and
+records assembled runtime verification as a post-signing gate. A successful
+ad-hoc development signature would not be Developer ID release evidence.
+
+The verified minimal plugin inventory is:
+
+- `Contents/PlugIns/OpenCloud_vfs_off.so`;
+- `Contents/PlugIns/platforms/libqcocoa.dylib`;
+- `Contents/PlugIns/platforms/libqminimal.dylib`;
+- `Contents/PlugIns/tls/libqsecuretransportbackend.dylib`.
+
+No FinderSync extension is part of this engine bundle.
+
+## Historical 0.18 build and assembly record
 
 These are the steps and settings recorded for the shipped engine. Signing is
 left out.
@@ -109,6 +249,13 @@ notifications off, and `CMAKE_OSX_DEPLOYMENT_TARGET=14.0`. The build produces
 
 To build and run the Atum tests as well, add `-DBUILD_TESTING=ON` and build the
 targets `testatumrootbinding` and `testatumrootfolder`.
+
+For the approved H2 acceptance realm, replace `production` above with `h2`. A
+pull-request Apple Silicon lane does this automatically, executes the compiled
+engine far enough to verify its closed H2 identity and offered 1.1 features,
+then uploads the unsigned test bundle. That hello receipt is not the remaining
+folder-ready/accepted-only/live-sync proof and does not authorize extending an
+expired realm.
 
 ### 3. Assemble the bundle
 
@@ -194,6 +341,19 @@ and patches that built them, are assets of the
 | `glib-2.86.0.tar.xz` | `b5739972d737cfb0d6fd1e7f163dfe650e2e03740bb3b8d408e4d1faea580d6d` |
 | `gettext-0.22.3.tar.gz` | `839a260b2314ba66274dae7d245ec19fce190a3aa67869bf31354cb558df42c7` |
 | `glib-2.86.0-gettext-0.22.3-craft-recipes.tar.gz` | `864024f45d730b6a92d74748044c41a3e479e35f4522228744abe6f6dcc54d58` |
+
+The 0.20.17 bundle uses these versions and recipes unchanged. Its source offer
+therefore keeps the established assets at their stable 0.18 URLs rather than
+publishing duplicate mirrors:
+
+- [qtbase-everywhere-src-6.11.1.tar.xz](https://github.com/atum-platform/atum-drive-companion/releases/download/drive-engine-0.18/qtbase-everywhere-src-6.11.1.tar.xz)
+- [qtdeclarative-everywhere-src-6.11.1.tar.xz](https://github.com/atum-platform/atum-drive-companion/releases/download/drive-engine-0.18/qtdeclarative-everywhere-src-6.11.1.tar.xz)
+- [qt-6.11.1-craft-recipes-11b07503.tar.gz](https://github.com/atum-platform/atum-drive-companion/releases/download/drive-engine-0.18/qt-6.11.1-craft-recipes-11b07503.tar.gz)
+- [glib-2.86.0.tar.xz](https://github.com/atum-platform/atum-drive-companion/releases/download/drive-engine-0.18/glib-2.86.0.tar.xz)
+- [gettext-0.22.3.tar.gz](https://github.com/atum-platform/atum-drive-companion/releases/download/drive-engine-0.18/gettext-0.22.3.tar.gz)
+- [gettext-0.22.3.tar.gz.sig](https://github.com/atum-platform/atum-drive-companion/releases/download/drive-engine-0.18/gettext-0.22.3.tar.gz.sig)
+- [glib-2.86.0-gettext-0.22.3-craft-recipes.tar.gz](https://github.com/atum-platform/atum-drive-companion/releases/download/drive-engine-0.18/glib-2.86.0-gettext-0.22.3-craft-recipes.tar.gz)
+- [SHA256SUMS.txt](https://github.com/atum-platform/atum-drive-companion/releases/download/drive-engine-0.18/SHA256SUMS.txt)
 
 The Qt and GLib tarballs are byte for byte the files their projects publish
 (download.qt.io and download.gnome.org) and match the SHA-256 values published

@@ -1,0 +1,29 @@
+{
+  "schema": "atum.drive-engine.source-offer/v1",
+  "futureSourceTag": "drive-engine-0.20.17",
+  "compiledSource": "919d5ddaca626098712632a54428d5bab8f571bd",
+  "reviewedHead": "f0309c60544c0eb6bf73c85740c834a0d1730a6e",
+  "unsignedBinarySha256": "53741d34db72413701492d166d2f319c5ff3229e80030a86554f4344f76b82cb",
+  "signedBinarySha256": "2681e4747ceee503eff986cc8e530dbb12038dcee0d4035b611828a31026ea55",
+  "runtimeBundleSha256": "073719dce3f53c7134411adab7431ec546d62254b527763d33e02403ab8ebc04",
+  "unsignedBundleSha256": "52e462198fb1a09dee66d187ffdd21f2da63691ad4faa696134a5876ad27aa5a",
+  "machoCount": 48,
+  "inventoryEntries": 134,
+  "plugins": [
+    "Contents/PlugIns/OpenCloud_vfs_off.so",
+    "Contents/PlugIns/platforms/libqcocoa.dylib",
+    "Contents/PlugIns/platforms/libqminimal.dylib",
+    "Contents/PlugIns/tls/libqsecuretransportbackend.dylib"
+  ],
+  "lgplSourceRelease": "drive-engine-0.18",
+  "lgplSourceAssets": [
+    "qtbase-everywhere-src-6.11.1.tar.xz",
+    "qtdeclarative-everywhere-src-6.11.1.tar.xz",
+    "qt-6.11.1-craft-recipes-11b07503.tar.gz",
+    "glib-2.86.0.tar.xz",
+    "gettext-0.22.3.tar.gz",
+    "gettext-0.22.3.tar.gz.sig",
+    "glib-2.86.0-gettext-0.22.3-craft-recipes.tar.gz",
+    "SHA256SUMS.txt"
+  ]
+}

@@ -29,9 +29,11 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QVersionNumber>
 
 #include <functional>
+#include <optional>
 
 enum CSYNC_EXCLUDE_TYPE : uint8_t {
     CSYNC_NOT_EXCLUDED = 0,
@@ -113,6 +115,15 @@ public:
 
     /// Pinned Atum roots always exclude credentials, journal and managed runtime/source.
     void setAtumRootExclusions();
+
+    /**
+     * Returns the complete active rule snapshot after a successful reload.
+     *
+     * The matcher deliberately continues using the rules it assembled during a
+     * failed reload, but callers must not present that partial file-backed list
+     * as authoritative.
+     */
+    std::optional<QStringList> exclusionPatterns() const;
 
     /**
      * Adjusts behavior of wildcards. Only used for testing.
@@ -218,6 +229,8 @@ private:
 
     /// List of all active exclude patterns
     QStringList _allExcludes;
+
+    bool _lastReloadComplete = false;
 
     /// see prepare()
     QRegularExpression _bnameTraversalRegexFile;

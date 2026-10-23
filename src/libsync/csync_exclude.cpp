@@ -220,6 +220,7 @@ ExcludedFiles::~ExcludedFiles() { }
 void ExcludedFiles::addExcludeFilePath(const QString &path)
 {
     _excludeFiles.insert(path);
+    _lastReloadComplete = false;
 }
 
 void ExcludedFiles::setExcludeConflictFiles(bool onoff)
@@ -245,6 +246,14 @@ void ExcludedFiles::setAtumRootExclusions()
     reloadExcludeFiles();
 }
 
+std::optional<QStringList> ExcludedFiles::exclusionPatterns() const
+{
+    if (!_lastReloadComplete || _allExcludes.isEmpty() || !_bnameTraversalRegexFile.isValid() || !_bnameTraversalRegexDir.isValid()
+        || !_fullTraversalRegexFile.isValid() || !_fullTraversalRegexDir.isValid() || !_fullRegexFile.isValid() || !_fullRegexDir.isValid())
+        return {};
+    return _allExcludes;
+}
+
 void ExcludedFiles::clearManualExcludes()
 {
     _manualExcludes.clear();
@@ -264,6 +273,7 @@ void ExcludedFiles::setClientVersion(const QVersionNumber &version)
 
 bool ExcludedFiles::reloadExcludeFiles()
 {
+    _lastReloadComplete = false;
     _allExcludes.clear();
     bool success = true;
     for (const auto &file : std::as_const(_excludeFiles)) {
@@ -287,6 +297,7 @@ bool ExcludedFiles::reloadExcludeFiles()
     _allExcludes.append(_manualExcludes);
     _allExcludes.append(_atumExcludes);
     prepare();
+    _lastReloadComplete = success;
     return success;
 }
 
