@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "gui/atumengine.h"
+#include "libsync/theme.h"
 
 #ifdef ATUM_ENGINE_OEM_PROFILE
 #include "atumprofile.h"
@@ -117,7 +118,7 @@ private Q_SLOTS:
         QCOMPARE(preserved.write(preservedContents), preservedContents.size());
         preserved.close();
 
-        const auto configPath = QDir(configDir).filePath(QStringLiteral("atum-drive.cfg"));
+        const auto configPath = QDir(configDir).filePath(Theme::instance()->configFileName());
         {
             QSettings settings(configPath, QSettings::IniFormat);
             settings.beginWriteArray(QStringLiteral("Accounts"), 1);

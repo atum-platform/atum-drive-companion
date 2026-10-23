@@ -162,6 +162,9 @@ has compiled an explicit production, S2 or H2 profile. It skips only when that
 generated authority is absent or the platform cannot run the stdio engine. The
 real cleanup path therefore remains mandatory on every Unix Atum-profile build,
 and its hello/account assertions follow the exact immutable authority compiled
-into that binary. `ATUM_ENGINE_EXE` continues to use CMake's portable
+into that binary. The disposable config filename likewise comes from the
+compiled `Theme`; hardcoding `atum-drive.cfg` would let S2/H2 take the
+empty-account shortcut instead of restoring the synthetic account.
+`ATUM_ENGINE_EXE` continues to use CMake's portable
 `$<TARGET_FILE:opencloud>` expression; `opencloud_add_test` already gives the
 test an explicit dependency on that engine target.
