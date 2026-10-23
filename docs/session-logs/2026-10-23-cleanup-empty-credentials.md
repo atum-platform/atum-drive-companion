@@ -58,3 +58,32 @@ pending deletion failure, and duplicate completion.
 The parent session must integrate this local commit, run the focused native
 `testatumenginestate` target in its prepared engine build, then own the full
 build/sign/restage and installed recovery evidence.
+
+## Coordinator native verification
+
+Exact source dba50e8d80599d224583ac4e3eb5e156a21ae076 was archived and built
+on the mini external APFS image using Xcode27 / Clang21, Qt6.11.1,
+CMake4.1.4 and Ninja1.13.2, production profile, macOS14 deployment target.
+Focused testatumenginestate compiled (292 steps) and passed all8 QtTest cases.
+Full engine build with BUILD_SHELL_INTEGRATION=OFF completed. Custody suite
+(excludedfiles, rootbinding, rootfolder, enginestate, engineprotocol) passed5/5.
+
+Broad safe suite passed33/37 targets. Credentialmanager was deliberately not
+executed because it accesses Keychain. The four failures (folderwatcher,
+folderman, protocolmodel, oauth) were rebuilt and run against exact parent
+7c5c85abf4a2949078e0bdeeb0c947d0f6a4c754 in a separate matching environment.
+Every failed assertion, value and line matched; normalized assertion SHA256
+c955345ce2b64e34c9dcfa6786f532dce27bb91e872a3a274342b7f5a08bff2f.
+These are pre-existing profile/environment gates, not cleanup regressions.
+
+Default FinderSync compilation failed on its upstream10.15 deployment target
+with Xcode27. Excluding shell integration matches the currently shipped Atum
+embedded engine inventory and startup path; no existing product feature is
+removed. Finder badges/context menus remain separately scoped future work.
+
+Evidence on mini: /private/tmp/atum-companion-build-01a0fad5/
+focused-dba50e8d-20261023b-logs and baseline-7c5c85ab-20261023a-logs.
+Production executable SHA256 before bundle assembly/signing:
+b757a18f5e571425e460d09c4975dd03b9e9a296de3914399318d235f60f474d.
+This is not release readiness: independent review, exact-head hosted checks,
+bundle assembly/signing/restaging and installed recovery remain outstanding.
