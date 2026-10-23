@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "gui/atumengine.h"
 
+#ifdef ATUM_ENGINE_OEM_PROFILE
+#include "atumprofile.h"
+#endif
+
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -87,8 +91,13 @@ private Q_SLOTS:
 
     void zeroCredentialCleanupProcessExitsOnceAndPreservesFiles()
     {
-        constexpr auto issuer = "https://auth.atumplatform.com/";
-        constexpr auto origin = "https://drive.atumplatform.com";
+#ifndef Q_OS_UNIX
+        QSKIP("The stdio Atum engine is unavailable on this platform.");
+#elif !defined(ATUM_ENGINE_OEM_PROFILE)
+        QSKIP("Requires a compiled Atum OEM profile; the unbranded engine has no cleanup authority.");
+#else
+        constexpr auto issuer = ATUM_MAS_ISSUER;
+        constexpr auto origin = ATUM_DRIVE_ORIGIN;
         constexpr auto subject = "synthetic-zero-job-owner";
         const QByteArray preservedContents("synthetic user file\n");
         QTemporaryDir sandbox;
@@ -181,6 +190,7 @@ private Q_SLOTS:
             QVERIFY2(!key.startsWith(QStringLiteral("CredentialOperations/")), qPrintable(key));
         }
         QVERIFY2(!standardError.toLower().contains("keychain"), standardError.constData());
+#endif
     }
 };
 

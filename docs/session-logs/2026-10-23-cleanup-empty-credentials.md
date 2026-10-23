@@ -145,3 +145,23 @@ focused CTest log SHA-256 is
 `7bc9bfdc7918c75428d2e136e06220999183d973eada17652f1450fddb25f6cd`;
 20-run process log SHA-256 is
 `71412e51f9e5f4919793a491bd6ee8369be580488ce362ab3e13e21c4c63a90c`.
+
+## Process-test profile portability correction
+
+Pre-push inspection found that the first subprocess test embedded production
+issuer/origin literals unconditionally. The ordinary matrix build and test step
+is deliberately unbranded on Windows, Linux and both macOS targets; Linux later
+reconfigures S2 only for the two root tests, while macOS arm64 later rebuilds H2
+and proves its hello/package without rerunning CTest. An unbranded build has no
+Atum cleanup authority, and `runAtumEngine()` is explicitly unavailable on
+non-Unix platforms.
+
+The subprocess regression now consumes `ATUM_MAS_ISSUER` and
+`ATUM_DRIVE_ORIGIN` from the existing generated `atumprofile.h` whenever CMake
+has compiled an explicit production, S2 or H2 profile. It skips only when that
+generated authority is absent or the platform cannot run the stdio engine. The
+real cleanup path therefore remains mandatory on every Unix Atum-profile build,
+and its hello/account assertions follow the exact immutable authority compiled
+into that binary. `ATUM_ENGINE_EXE` continues to use CMake's portable
+`$<TARGET_FILE:opencloud>` expression; `opencloud_add_test` already gives the
+test an explicit dependency on that engine target.
