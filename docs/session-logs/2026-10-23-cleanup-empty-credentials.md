@@ -118,3 +118,30 @@ cleanup deadline.
 fail without making the SignedOut persistence result observable to the engine.
 That is a separate durability/diagnostic gap, not evidence that credentials
 were retained, and is deliberately not broadened into this bounded fix.
+
+Exact implementation commit `c51742cfafaca5b023bc9e66a068c254c6114aab`
+was archived into a new isolated mini source/build directory and compiled with
+the existing verified SDK: Xcode 27 / Clang 21, Qt 6.11.1, CMake 4.1.4,
+Ninja 1.13.2, production profile, RelWithDebInfo, macOS 14 minimum,
+`BUILD_TESTING=ON`, `BUILD_SHELL_INTEGRATION=OFF`, parallelism two. The clean
+target build completed 292/292 steps. `testatumenginestate` passed 9/9 QtTest
+cases, including the subprocess regression; the combined engine state/protocol
+CTest run passed 2/2 targets. The subprocess-only case then passed 20/20
+additional isolated repetitions while closing stdin immediately after the
+cleanup frame.
+
+The process proof validates the exact production issuer/origin and a restored
+synthetic owner, zero credential-operation metadata before and after cleanup,
+exactly two stdout frames (`hello`, then one `disconnected`), normal exit zero,
+unchanged sync-root file bytes and no Keychain diagnostic. No live account,
+external endpoint, credential, Keychain item, installed app or user file was
+accessed.
+
+Evidence directory:
+`/private/tmp/atum-companion-build-01a0fad5/followup-c51742cf-20261023a-logs`.
+Source archive SHA-256 is
+`46df21fb3238fad8620abb4d752a5520dc29ac23d1fb959d7043e50c8c5e233e`;
+focused CTest log SHA-256 is
+`7bc9bfdc7918c75428d2e136e06220999183d973eada17652f1450fddb25f6cd`;
+20-run process log SHA-256 is
+`71412e51f9e5f4919793a491bd6ee8369be580488ce362ab3e13e21c4c63a90c`.
