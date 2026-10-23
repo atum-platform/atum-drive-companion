@@ -168,3 +168,27 @@ empty-account shortcut instead of restoring the synthetic account.
 `ATUM_ENGINE_EXE` continues to use CMake's portable
 `$<TARGET_FILE:opencloud>` expression; `opencloud_add_test` already gives the
 test an explicit dependency on that engine target.
+
+Exact correction commit `919d5ddaca626098712632a54428d5bab8f571bd`
+was archived once and built from clean, separate production, S2 and unbranded
+object trees with the existing SDK and parallelism two. Production passed 9/9
+QtTest cases plus the direct subprocess proof. S2 also passed 9/9 with zero
+skips; its generated header contained the spike Drive/auth authorities and its
+theme supplied `atum-drive-test.cfg`, proving that the synthetic account was
+restored under the compiled S2 identity. The unbranded macOS build compiled the
+same test target and passed its eight profile-independent cases while reporting
+one explicit `Requires a compiled Atum OEM profile` skip for the subprocess.
+Windows was not built locally; its source guard matches `runAtumEngine()`'s
+existing non-Unix `unavailable` contract and remains an exact-head CI compile
+gate. H2 was not redundantly rebuilt after the independent S2 profile proof and
+remains covered by its existing exact-identity hello/package workflow gate.
+
+Evidence roots are
+`/private/tmp/atum-companion-build-01a0fad5/portable-919d5dda-20261023a-{production,s2,generic}-logs`.
+Source archive SHA-256 is
+`7dd1cdf10f4635171a851bbdb1acca676d724a4f9b1583ee50a7974b96199a6e`;
+production/S2 CTest log SHA-256 values are respectively
+`fdf06fdeb969fc5e141cbb2d9f136b5b8b180210abb0a95b4997cfd81fd00b71`
+and `8fa2c767d407bfa7f2ea66d71160b6277f1d731e1c240c89ae19e9200e23a8b8`;
+the generic CTest log SHA-256 is
+`c183b17fdb43616ed9bab68966c2623d280747952e3da2ece44c8b007ba0dbc0`.
