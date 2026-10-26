@@ -5,10 +5,97 @@ that ships inside the Atum desktop app for macOS. The engine is a modified
 version of OpenCloud Desktop. It runs as its own program; the Atum app starts
 it and talks to it over standard input and output.
 
-## Atum Drive engine 0.20.17 source-offer record
+## Atum Drive engine 0.20.19 source-offer record
+
+This record describes the engine prepared for Atum desktop 0.20.19. It is the
+current record; the 0.20.17 and 0.18 records below are history.
+
+| | |
+|---|---|
+| Publication status | Prepared source-offer record; the `drive-engine-0.20.19` tag and release are created after this documentation change merges |
+| Atum desktop release | 0.20.19 for macOS on Apple silicon |
+| Location in the app | `Contents/Resources/drive-engine/AtumDriveEngine.app` |
+| Engine identity | Atum Drive, bundle identifier `com.atumplatform.drive`, executable `AtumDrive` |
+| Compiled source revision | `90aa0070fd6254fc47a41870728d547d414186cc` |
+| Source-offer tag | `drive-engine-0.20.19`, created by the coordinator on the merge commit after the pull request merges; the tag commit is deliberately not claimed to be the compiled revision |
+| Upstream base | OpenCloud Desktop v4.0.0, commit `9f701e6db2e101cb3247d3331647a60266e83b0f`, https://github.com/opencloud-eu/desktop |
+
+The release manifest must retain the compiled source revision above. The source
+tag contains that implementation plus the build, licence and source-offer
+documentation needed to reproduce and understand the distributed bundle.
+Record the final tag commit separately when the tag is created; never replace
+the compiled revision with the documentation tag SHA.
+
+Changes since 0.20.17 are `484b4b911` (sign in with the host app's own Atum
+token) and `90aa0070f` (cap the app token cache, keep status checks
+credential-free).
+
+Hashes for the prepared 0.20.19 engine are:
+
+- unsigned `AtumDrive` SHA-256:
+  `8cfc8ed92362b52a0dd1e614ac0ce958a7f533fcdf48c4975706fe142d318e99`;
+- Developer ID-signed `AtumDrive` SHA-256:
+  `1ce54acabde4e29ff494fb6644d6afdbcf0715cf1f7318cda2e1e801384f5598`;
+- deterministic unsigned bundle inventory SHA-256:
+  `bd1405c3e9cc060f14f2d4f8c770f587309ec65f043d973ab442bb9122e77fc6`;
+- signed runtime bundle inventory SHA-256:
+  `c3ea63d9c025505ba4e250910ec7b2c526b9c800288e80048b9fb5aa39d6694f`.
+
+Signing changes Mach-O bytes and therefore changes both the executable and
+bundle hashes. The unsigned hash is the assembly input; the signed executable
+and runtime bundle hashes are the values the desktop manifest must enforce.
+
+The Developer ID build uses "Developer ID Application" for team `7D5FC62RXD`
+with the hardened runtime, a secure timestamp and no entitlements; strict deep
+verification passed. The signed hello/stop smoke passed with protocol 1 and the
+`exclusions`, `progress`, `quota` and `sync` features.
+
+### 0.20.19 toolchain and dependency record
+
+The prepared bundle was built on Apple silicon with:
+
+| Component | Version or revision |
+|---|---|
+| Xcode / macOS SDK | Xcode 27.0 (`27A266a`), SDK 27.0, Apple Clang 21.0.0 |
+| Minimum macOS | 14.0 |
+| Qt | 6.11.1 |
+| QtKeychain | 0.16.0 |
+| libre-graph-api-cpp-qt-client | 1.0.7 |
+| KDSingleApplication | 1.2.0 |
+| OpenSSL / ICU / SQLite | 3.6.3 / 78.1 / 3.50.4 |
+| GLib / FreeType / HarfBuzz | 2.86.0 / 2.14.1 / 11.2.0 |
+| ECM / CMake / Ninja | 6.29.0 / 4.1.4 / 1.13.2 |
+| KDE Craft blueprints | `11b07503ab24e84affc5ed9c94093f8b03b05fd4` |
+| OpenCloud Craft blueprints | `4b5f539521b7a68d51417faffe5278694a68996f` |
+| Craft Core | `b80e8f8c6c4f9fc8c09464dc8b696bfa625fa12c` |
+
+`.craft.shelf` is the machine-readable authority for the complete dependency
+set.
+
+### 0.20.19 unsigned assembly
+
+The 0.20.17 build and assembly procedure below still applies; use compiled
+revision `90aa0070fd6254fc47a41870728d547d414186cc` and source-offer tag
+`drive-engine-0.20.19`. The recipe also rewrites absolute dependencies of extra
+executables in `Contents/MacOS` (for example `atum-drivecmd`) to
+`@loader_path/../Frameworks/<library>` when `macdeployqt` already bundled the
+library, and records each change in
+`evidence/extra-executable-dependencies-rewritten.tsv`.
+
+The retained unsigned bundle contains 49 arm64 Mach-O files and 135 canonical
+file/link inventory entries. Its main executable records macOS minOS 14.0 and
+SDK 27.0; every non-system dependency resolves inside the bundle and no
+absolute build or SDK rpath remains.
+
+The 0.20.19 bundle uses the same Qt, GLib, gettext and Craft recipe versions as
+0.20.17. Their archives and the GNU gettext signature remain on the stable
+`drive-engine-0.18` release; see the asset list below and do not mirror them
+under 0.20.19.
+
+## Historical 0.20.17 source-offer record
 
 This record describes the engine prepared for Atum desktop 0.20.17. It is
-separate from the historical 0.18 record below.
+separate from the 0.20.19 record above and the 0.18 record below.
 
 | | |
 |---|---|
@@ -91,14 +178,15 @@ Compared with OpenCloud Desktop v4.0.0, this tree adds or changes:
 - Tests for the above in `test/`, plus CI and design notes in `.github/` and
   `docs/`.
 
-`git diff 9f701e6db2e101cb3247d3331647a60266e83b0f 919d5ddaca626098712632a54428d5bab8f571bd`
-against upstream shows the compiled 0.20.17 change set. The initial 0.18 engine
-was prepared between 2 and 3 October 2026; later commits add the reviewed 1.1
-facts, custody and cleanup behavior recorded in this repository.
+`git diff 9f701e6db2e101cb3247d3331647a60266e83b0f 90aa0070fd6254fc47a41870728d547d414186cc`
+against upstream shows the compiled 0.20.19 change set. The 0.20.17 engine was
+compiled from `919d5ddaca626098712632a54428d5bab8f571bd`. The initial 0.18
+engine was prepared between 2 and 3 October 2026; later commits add the
+reviewed 1.1 facts, custody and cleanup behavior recorded in this repository.
 
-## Atum Drive engine 0.20.17 unsigned build and assembly
+## Historical 0.20.17 unsigned build and assembly
 
-### Current toolchain and dependency record
+### 0.20.17 toolchain and dependency record
 
 The prepared bundle was built on Apple silicon with:
 

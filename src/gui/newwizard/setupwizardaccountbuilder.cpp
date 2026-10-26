@@ -31,6 +31,12 @@ OAuth2AuthenticationStrategy::OAuth2AuthenticationStrategy(
 {
 }
 
+OAuth2AuthenticationStrategy::OAuth2AuthenticationStrategy(const QString &token)
+    : _token(token)
+    , _tokenOnly(true)
+{
+}
+
 HttpCredentialsGui *OAuth2AuthenticationStrategy::makeCreds()
 {
     Q_ASSERT(isValid());
@@ -39,7 +45,7 @@ HttpCredentialsGui *OAuth2AuthenticationStrategy::makeCreds()
 
 bool OAuth2AuthenticationStrategy::isValid()
 {
-    return !_token.isEmpty() && !_refreshToken.isEmpty();
+    return !_token.isEmpty() && (_tokenOnly || !_refreshToken.isEmpty());
 }
 
 FetchUserInfoJobFactory OAuth2AuthenticationStrategy::makeFetchUserInfoJobFactory(QNetworkAccessManager *nam)

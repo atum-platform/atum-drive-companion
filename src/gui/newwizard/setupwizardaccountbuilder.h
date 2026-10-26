@@ -27,6 +27,10 @@ public:
     explicit OAuth2AuthenticationStrategy(
         const QString &token, const QString &refreshToken, const QVariantMap &dynamicRegistrationData, const IdToken &idToken);
 
+    /* The internal engine's host app supplies the token and renews it; no refresh token is
+     * issued to (or stored by) this process. */
+    explicit OAuth2AuthenticationStrategy(const QString &token);
+
     HttpCredentialsGui *makeCreds();
 
     bool isValid();
@@ -41,6 +45,7 @@ public:
 private:
     QString _token;
     QString _refreshToken;
+    bool _tokenOnly = false;
 
     const QVariantMap _dynamicRegistrationData;
     const IdToken _idToken;

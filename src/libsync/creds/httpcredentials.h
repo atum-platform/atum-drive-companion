@@ -61,6 +61,13 @@ public:
     void invalidateToken() override;
     void forgetSensitiveData() override;
 
+    /* The internal engine's host app holds the person's Atum account token and hands it over
+     * (app-credential mode). Adopt it in memory only: no refresh token is stored here, so the
+     * host stays the single custodian and supplies the next token. `expiresAt` is epoch
+     * milliseconds (0 when unknown); the bearer is never presented after it, so a handoff that
+     * is not renewed can only fail closed. */
+    void adoptAccessToken(const QString &accessToken, qint64 expiresAt = 0);
+
     /* If we still have a valid refresh token, try to refresh it assynchronously and Q_EMIT fetched()
      * otherwise return false
      */
@@ -79,6 +86,9 @@ protected:
     QString _accessToken;
     QString _refreshToken;
     QString _previousPassword;
+    /* 0 for the engine's own OAuth flow (Qt keeps the token until a refresh); app-credential
+     * mode sets the moment the host's token stops being usable. */
+    qint64 _accessTokenExpiresAt = 0;
 
     QString _fetchErrorString;
     bool _ready = false;

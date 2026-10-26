@@ -21,11 +21,13 @@ INVENTORY = SCRIPTS / "inventory-atum-engine-bundle.py"
 HELLO = SCRIPTS / "hello-stop-atum-engine.py"
 BUILDING = REPOSITORY / "BUILDING.md"
 FIXTURE = REPOSITORY / "test/fixtures/atum-drive-engine-0.20.17-source-offer.json"
+FIXTURE_02019 = REPOSITORY / "test/fixtures/atum-drive-engine-0.20.19-source-offer.json"
 
 
 class UnsignedRecipeContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        self.fixture_02019 = json.loads(FIXTURE_02019.read_text(encoding="utf-8"))
         self.recipe = ASSEMBLE.read_text(encoding="utf-8")
         self.building = BUILDING.read_text(encoding="utf-8")
 
@@ -63,6 +65,21 @@ class UnsignedRecipeContractTests(unittest.TestCase):
         for path in (VERIFY, INVENTORY, HELLO):
             compile(path.read_text(encoding="utf-8"), str(path), "exec")
 
+    def test_extra_executable_dependencies_are_rewritten(self) -> None:
+        self.assertIn("extra-executable-dependencies-rewritten.tsv", self.recipe)
+        self.assertIn('for executable in "$WORK_APP"/Contents/MacOS/*', self.recipe)
+        self.assertIn('"$WORK_APP/Contents/MacOS/AtumDrive" && continue', self.recipe)
+        self.assertIn("@loader_path/../Frameworks/$library", self.recipe)
+        self.assertIn(
+            '/usr/bin/install_name_tool -change "$dependency" '
+            '"@loader_path/../Frameworks/$library" "$executable"',
+            self.recipe,
+        )
+        self.assertLess(
+            self.recipe.index('"$SDK_DIR/bin/macdeployqt" "$WORK_APP"'),
+            self.recipe.index("extra-executable-dependencies-rewritten.tsv"),
+        )
+
     def test_known_inventory_contract_is_retained(self) -> None:
         verifier = VERIFY.read_text(encoding="utf-8")
         for plugin in self.fixture["plugins"]:
@@ -76,16 +93,30 @@ class UnsignedRecipeContractTests(unittest.TestCase):
         self.assertIn(f"{self.fixture['machoCount']} arm64 Mach-O", self.building)
         self.assertIn(f"{self.fixture['inventoryEntries']} canonical", self.building)
 
+    def test_02019_source_offer_record_is_exact(self) -> None:
+        self.assertIn(self.fixture_02019["futureSourceTag"], self.building)
+        self.assertIn(self.fixture_02019["compiledSource"], self.building)
+        for key in (
+            "unsignedBinarySha256",
+            "signedBinarySha256",
+            "runtimeBundleSha256",
+            "unsignedBundleSha256",
+        ):
+            self.assertIn(self.fixture_02019[key], self.building)
+        self.assertIn(f"{self.fixture_02019['machoCount']} arm64 Mach-O", self.building)
+        self.assertIn(
+            f"{self.fixture_02019['inventoryEntries']} canonical", self.building
+        )
+
     def test_lgpl_assets_stay_on_stable_source_release(self) -> None:
         stable = self.fixture["lgplSourceRelease"]
         self.assertEqual(stable, "drive-engine-0.18")
         for asset in self.fixture["lgplSourceAssets"]:
             self.assertIn(asset, self.building)
-        self.assertNotIn("releases/download/drive-engine-0.20.17/qt", self.building)
-        self.assertNotIn("releases/download/drive-engine-0.20.17/glib", self.building)
-        self.assertNotIn(
-            "releases/download/drive-engine-0.20.17/gettext", self.building
-        )
+        for tag in ("drive-engine-0.20.17", "drive-engine-0.20.19"):
+            self.assertNotIn(f"releases/download/{tag}/qt", self.building)
+            self.assertNotIn(f"releases/download/{tag}/glib", self.building)
+            self.assertNotIn(f"releases/download/{tag}/gettext", self.building)
 
     def test_inventory_hash_is_sorted_and_relation_based(self) -> None:
         with tempfile.TemporaryDirectory(

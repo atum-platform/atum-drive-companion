@@ -17,6 +17,7 @@
 #include "newwizard/setupwizardaccountbuilder.h"
 
 #include <QApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -24,7 +25,10 @@
 #include <QPointer>
 #include <QSocketNotifier>
 #include <QTimer>
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <memory>
 #ifdef Q_OS_UNIX
 #include <unistd.h>
 #endif
@@ -43,6 +47,91 @@ namespace {
     {
         send({{QStringLiteral("kind"), QStringLiteral("state")}, {QStringLiteral("state"), value}});
     }
+
+    /* The internal engine's host app holds the person's Atum account token; app-credential mode
+     * carries that short-lived access token instead of running this process's own browser OAuth.
+     * No refresh token is accepted or stored: the app renews its own grant and hands over the
+     * next access token. */
+    struct AtumEngineCredential
+    {
+        QString accessToken;
+        qint64 expiresAt = 0; // epoch milliseconds; 0 when the server did not say
+    };
+
+    /* The bearer is the person's general Atum account token: it also authorizes the platform and
+     * the model gateway. It is already short-lived at the issuer; cap how long this process keeps
+     * using one even if the issuer announced longer, and ask the host for the next one before then.
+     * A handoff that is not renewed fails closed (the token stops being presented at expiry). */
+    constexpr qint64 atumEngineCredentialCacheMs = 5 * 60 * 1000;
+
+// Used only by the Unix engine loop below; MSVC rejects unreferenced internal functions (C5245).
+#ifdef Q_OS_UNIX
+    bool atumEngineCredentialToken(const QJsonValue &value, QString *token)
+    {
+        if (!value.isString())
+            return false;
+        const auto text = value.toString();
+        if (text.isEmpty() || text.size() > 4096)
+            return false;
+        for (auto character : text) {
+            if (character.isSpace() || character.category() == QChar::Other_Control)
+                return false;
+        }
+        *token = text;
+        return true;
+    }
+
+    bool atumEngineCredentialExpiry(const QJsonValue &value, qint64 *expiresAt)
+    {
+        *expiresAt = 0;
+        if (value.isUndefined())
+            return true;
+        if (!value.isDouble())
+            return false;
+        const double number = value.toDouble();
+        if (!std::isfinite(number) || number < 0 || number > 9007199254740991.0 || std::floor(number) != number)
+            return false;
+        *expiresAt = qint64(number);
+        return true;
+    }
+
+    // `start`'s optional credential object: exactly accessToken[ and expiresAt].
+    bool atumEngineStartCredential(const QJsonObject &start, AtumEngineCredential *credential, bool *present)
+    {
+        const auto value = start.value(QStringLiteral("credential"));
+        *present = !value.isUndefined();
+        if (!*present)
+            return true;
+        if (!value.isObject())
+            return false;
+        const auto object = value.toObject();
+        const auto keys = object.keys();
+        if (keys.size() != 1 && keys.size() != 2)
+            return false;
+        for (const auto &key : keys) {
+            if (key != QStringLiteral("accessToken") && key != QStringLiteral("expiresAt"))
+                return false;
+        }
+        return atumEngineCredentialToken(object.value(QStringLiteral("accessToken")), &credential->accessToken)
+            && atumEngineCredentialExpiry(object.value(QStringLiteral("expiresAt")), &credential->expiresAt);
+    }
+
+    // A `credential` frame: exactly kind, accessToken[ and expiresAt].
+    bool atumEngineCredentialFrame(const QJsonObject &frame, AtumEngineCredential *credential)
+    {
+        if (frame.value(QStringLiteral("kind")) != QStringLiteral("credential"))
+            return false;
+        const auto keys = frame.keys();
+        if (keys.size() != 2 && keys.size() != 3)
+            return false;
+        for (const auto &key : keys) {
+            if (key != QStringLiteral("kind") && key != QStringLiteral("accessToken") && key != QStringLiteral("expiresAt"))
+                return false;
+        }
+        return atumEngineCredentialToken(frame.value(QStringLiteral("accessToken")), &credential->accessToken)
+            && atumEngineCredentialExpiry(frame.value(QStringLiteral("expiresAt")), &credential->expiresAt);
+    }
+#endif // Q_OS_UNIX
 }
 
 QString atumEngineFolderState(SyncResult::Status status)
@@ -120,6 +209,11 @@ int runAtumEngine()
     bool failed = false;
     bool stopping = false;
     bool stopped = false;
+    /* App-credential mode: start carried the host app's own access token, so this process never
+     * runs the browser sign-in and asks the app for a fresh token instead. */
+    bool appCredential = false;
+    qint64 credentialExpiresAt = 0;
+    qint64 credentialRequestedAt = 0; // at most one request per cool-down while still due
     QJsonObject previousProgress;
     qint64 lastSyncAt = 0;
     qint64 sentSyncAt = 0;
@@ -296,8 +390,21 @@ int runAtumEngine()
             state(QStringLiteral("error"));
             return;
         }
+        if (appCredential) {
+            // The app is the custodian: ask it for a fresh token at expiry, and when the account
+            // was refused (an expired or revoked token) instead of showing a browser sign-in.
+            const auto now = QDateTime::currentMSecsSinceEpoch();
+            const bool expiring = credentialExpiresAt > 0 && now >= credentialExpiresAt - 60 * 1000;
+            // The heartbeat runs every 2 s. A handoff that is still too near expiry (or a signed-out
+            // account the host has not fixed yet) must not ask again on every tick; the next ask
+            // waits a cool-down, while the app's own two-renewal cap still bounds the whole run.
+            if ((accountState->isSignedOut() || expiring) && now - credentialRequestedAt >= 30 * 1000) {
+                credentialRequestedAt = now;
+                send({{QStringLiteral("kind"), QStringLiteral("credential_request")}});
+            }
+        }
         if (accountState->isSignedOut()) {
-            state(QStringLiteral("reauthenticate"));
+            state(appCredential ? QStringLiteral("connecting") : QStringLiteral("reauthenticate"));
             return;
         }
         if (!folders || folders->folders().size() != 1) {
@@ -336,6 +443,20 @@ int runAtumEngine()
         QObject::connect(folders.get(), &FolderMan::folderListChanged, &lifetime, attachFacts);
         QObject::connect(accountState->account()->spacesManager(), &GraphApi::SpacesManager::spaceChanged, &lifetime, [&](GraphApi::Space *) { quota(); });
         QObject::connect(accountState.get(), &AccountState::credentialCleanupChanged, &lifetime, finishCleanupIfSettled);
+    };
+    const auto adoptCredential = [&](const AtumEngineCredential &credential) {
+        auto *credentials = accountState ? qobject_cast<HttpCredentialsGui *>(accountState->account()->credentials()) : nullptr;
+        if (!credentials)
+            return false;
+        const auto now = QDateTime::currentMSecsSinceEpoch();
+        const auto announced = credential.expiresAt > 0 ? credential.expiresAt : now + atumEngineCredentialCacheMs;
+        credentialExpiresAt = std::min(announced, now + atumEngineCredentialCacheMs);
+        credentialRequestedAt = QDateTime::currentMSecsSinceEpoch();
+        if (accountState->isSignedOut())
+            accountState->signIn();
+        credentials->adoptAccessToken(credential.accessToken, credentialExpiresAt);
+        accountState->checkConnectivity();
+        return true;
     };
     const auto enroll = [&] {
         auto *spaces = accountState->account()->spacesManager();
@@ -413,6 +534,21 @@ int runAtumEngine()
                 send(result.message);
                 return true;
             }
+            if (kind == QStringLiteral("credential")) {
+                AtumEngineCredential next;
+                if (!started || !appCredential || !atumEngineCredentialFrame(request, &next)) {
+                    fail();
+                    stop();
+                    return false;
+                }
+                if (!adoptCredential(next)) {
+                    fail();
+                    stop();
+                    return false;
+                }
+                report();
+                return true;
+            }
             const bool cleanup = kind == QStringLiteral("cleanup");
             if ((kind != QStringLiteral("start") && !cleanup) || started) {
                 fail();
@@ -421,6 +557,14 @@ int runAtumEngine()
             }
             if (!cleanup && !features.acceptStart(request))
                 return false;
+            AtumEngineCredential startCredential;
+            bool hasStartCredential = false;
+            if (!cleanup && !atumEngineStartCredential(request, &startCredential, &hasStartCredential)) {
+                fail();
+                stop();
+                return false;
+            }
+            appCredential = hasStartCredential;
             started = true;
             subject = request.value(QStringLiteral("subject")).toString();
             root = request.value(QStringLiteral("root")).toString();
@@ -473,6 +617,11 @@ int runAtumEngine()
                     fail();
                     return true;
                 }
+                if (appCredential && !adoptCredential(startCredential)) {
+                    fail();
+                    stop();
+                    return true;
+                }
                 accountState->checkConnectivity();
                 if (!accountState->isSignedOut()) {
                     if (folders->folders().isEmpty()) {
@@ -484,6 +633,36 @@ int runAtumEngine()
                     report();
                     return true;
                 }
+            }
+            if (appCredential) {
+                // The host app supplied the person's own account token: enrol with it directly,
+                // never opening this process's browser sign-in.
+                Wizard::SetupWizardAccountBuilder builder;
+                builder.setServerUrl(profile->driveOrigin);
+                builder.setSyncTargetDir(root);
+                builder.setAuthenticationStrategy(std::make_unique<Wizard::OAuth2AuthenticationStrategy>(startCredential.accessToken));
+                const auto pending = builder.build();
+                // No id_token travels with an app token; the pinned owner identity is the start frame's.
+                pending->setAtumIdentity(profile->issuer, subject);
+                accountState = AccountManager::instance()->addAccount(pending);
+                accountState->setSettingUp(true);
+                wire();
+                AccountManager::instance()->save();
+                auto *credentials = qobject_cast<HttpCredentialsGui *>(pending->credentials());
+                if (!credentials || !adoptCredential(startCredential)) {
+                    fail();
+                    stop();
+                    return true;
+                }
+                auto *settings = new FetchServerSettingsJob(accountState->account(), &lifetime);
+                QObject::connect(settings, &FetchServerSettingsJob::finishedSignal, &lifetime, [&] {
+                    AccountManager::instance()->save();
+                    Q_EMIT accountState->account()->credentialsFetched();
+                    accountState->setSettingUp(false);
+                    enroll();
+                });
+                settings->start();
+                return true;
             }
             auto *manager = new QNetworkAccessManager(&lifetime);
             auto *oauth = new OAuth(profile->driveOrigin, manager, {}, &lifetime);

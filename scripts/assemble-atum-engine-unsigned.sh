@@ -104,6 +104,22 @@ while IFS= read -r -d '' file; do
     fi
 done < <(find "$WORK_APP/Contents" -type f -print0)
 
+# macdeployqt processes the main executable and bundled frameworks, but not
+# additional executables in Contents/MacOS (for example atum-drivecmd). Rewrite
+# any absolute dependency whose library macdeployqt already bundled.
+: > "$EVIDENCE/extra-executable-dependencies-rewritten.tsv"
+for executable in "$WORK_APP"/Contents/MacOS/*; do
+    test -x "$executable" || continue
+    test "$executable" = "$WORK_APP/Contents/MacOS/AtumDrive" && continue
+    while IFS= read -r dependency; do
+        test -n "$dependency" || continue
+        library=$(basename "$dependency")
+        test -e "$WORK_APP/Contents/Frameworks/$library" || continue
+        printf '%s\t%s\t%s\n' "${executable#$OUTPUT_DIR/}" "$dependency" "@loader_path/../Frameworks/$library" >> "$EVIDENCE/extra-executable-dependencies-rewritten.tsv"
+        /usr/bin/install_name_tool -change "$dependency" "@loader_path/../Frameworks/$library" "$executable"
+    done < <(/usr/bin/otool -L "$executable" | /usr/bin/awk 'NR>1 {print $1}' | /usr/bin/grep -E '^/' || true)
+done
+
 echo '49ee1ced9c6f4c38b1a2220a6b65cd06158511c31a86604ba5c39dce048c218b  '"$WORK_APP/Contents/Resources/atum.icns" \
     | /usr/bin/shasum -a 256 -c -
 if /usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$WORK_APP/Contents/Info.plist" >/dev/null 2>&1; then
