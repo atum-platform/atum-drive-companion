@@ -229,6 +229,28 @@ bool HttpCredentials::refreshAccessToken()
     return true;
 }
 
+void HttpCredentials::adoptAccessToken(const QString &accessToken)
+{
+    if (accessToken.isEmpty()) {
+        return;
+    }
+    // A keychain fetch or an engine-side refresh still in flight belongs to a credential this
+    // token replaces; its result must not overwrite it.
+    ++_credentialGeneration;
+    if (_oAuthJob) {
+        _oAuthJob->disconnect(this);
+        _oAuthJob->deleteLater();
+        _oAuthJob.clear();
+    }
+    _accessToken = accessToken;
+    _refreshToken.clear();
+    _previousPassword.clear();
+    _fetchErrorString.clear();
+    _ready = true;
+    _wasFetched = true;
+    Q_EMIT fetched();
+}
+
 void HttpCredentials::invalidateToken()
 {
     qCWarning(lcHttpCredentials) << u"Invalidating the credentials";

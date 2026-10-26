@@ -61,6 +61,11 @@ public:
     void invalidateToken() override;
     void forgetSensitiveData() override;
 
+    /* The internal engine's host app holds the person's Atum account token and hands it over
+     * (app-credential mode). Adopt it in memory only: no refresh token is stored here, so the
+     * host stays the single custodian and supplies the next token. */
+    void adoptAccessToken(const QString &accessToken);
+
     /* If we still have a valid refresh token, try to refresh it assynchronously and Q_EMIT fetched()
      * otherwise return false
      */
