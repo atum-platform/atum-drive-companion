@@ -64,6 +64,8 @@ namespace {
      * A handoff that is not renewed fails closed (the token stops being presented at expiry). */
     constexpr qint64 atumEngineCredentialCacheMs = 5 * 60 * 1000;
 
+// Used only by the Unix engine loop below; MSVC rejects unreferenced internal functions (C5245).
+#ifdef Q_OS_UNIX
     bool atumEngineCredentialToken(const QJsonValue &value, QString *token)
     {
         if (!value.isString())
@@ -129,6 +131,7 @@ namespace {
         return atumEngineCredentialToken(frame.value(QStringLiteral("accessToken")), &credential->accessToken)
             && atumEngineCredentialExpiry(frame.value(QStringLiteral("expiresAt")), &credential->expiresAt);
     }
+#endif // Q_OS_UNIX
 }
 
 QString atumEngineFolderState(SyncResult::Status status)
