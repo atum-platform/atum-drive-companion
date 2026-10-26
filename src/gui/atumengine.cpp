@@ -25,6 +25,7 @@
 #include <QPointer>
 #include <QSocketNotifier>
 #include <QTimer>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -56,6 +57,12 @@ namespace {
         QString accessToken;
         qint64 expiresAt = 0; // epoch milliseconds; 0 when the server did not say
     };
+
+    /* The bearer is the person's general Atum account token: it also authorizes the platform and
+     * the model gateway. It is already short-lived at the issuer; cap how long this process keeps
+     * using one even if the issuer announced longer, and ask the host for the next one before then.
+     * A handoff that is not renewed fails closed (the token stops being presented at expiry). */
+    constexpr qint64 atumEngineCredentialCacheMs = 5 * 60 * 1000;
 
     bool atumEngineCredentialToken(const QJsonValue &value, QString *token)
     {
@@ -203,7 +210,7 @@ int runAtumEngine()
      * runs the browser sign-in and asks the app for a fresh token instead. */
     bool appCredential = false;
     qint64 credentialExpiresAt = 0;
-    bool credentialRequested = false;
+    qint64 credentialRequestedAt = 0; // at most one request per cool-down while still due
     QJsonObject previousProgress;
     qint64 lastSyncAt = 0;
     qint64 sentSyncAt = 0;
@@ -385,8 +392,11 @@ int runAtumEngine()
             // was refused (an expired or revoked token) instead of showing a browser sign-in.
             const auto now = QDateTime::currentMSecsSinceEpoch();
             const bool expiring = credentialExpiresAt > 0 && now >= credentialExpiresAt - 60 * 1000;
-            if ((accountState->isSignedOut() || expiring) && !credentialRequested) {
-                credentialRequested = true;
+            // The heartbeat runs every 2 s. A handoff that is still too near expiry (or a signed-out
+            // account the host has not fixed yet) must not ask again on every tick; the next ask
+            // waits a cool-down, while the app's own two-renewal cap still bounds the whole run.
+            if ((accountState->isSignedOut() || expiring) && now - credentialRequestedAt >= 30 * 1000) {
+                credentialRequestedAt = now;
                 send({{QStringLiteral("kind"), QStringLiteral("credential_request")}});
             }
         }
@@ -435,11 +445,13 @@ int runAtumEngine()
         auto *credentials = accountState ? qobject_cast<HttpCredentialsGui *>(accountState->account()->credentials()) : nullptr;
         if (!credentials)
             return false;
-        credentialExpiresAt = credential.expiresAt;
-        credentialRequested = false;
+        const auto now = QDateTime::currentMSecsSinceEpoch();
+        const auto announced = credential.expiresAt > 0 ? credential.expiresAt : now + atumEngineCredentialCacheMs;
+        credentialExpiresAt = std::min(announced, now + atumEngineCredentialCacheMs);
+        credentialRequestedAt = QDateTime::currentMSecsSinceEpoch();
         if (accountState->isSignedOut())
             accountState->signIn();
-        credentials->adoptAccessToken(credential.accessToken);
+        credentials->adoptAccessToken(credential.accessToken, credentialExpiresAt);
         accountState->checkConnectivity();
         return true;
     };

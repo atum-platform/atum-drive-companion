@@ -19,6 +19,7 @@
 #include "libsync/account.h"
 #include "libsync/cookiejar.h"
 #include "libsync/creds/abstractcredentials.h"
+#include "libsync/creds/httpcredentials.h"
 #include "libsync/theme.h"
 
 #include <QJsonParseError>
@@ -85,6 +86,10 @@ CoreJob *CheckServerJobFactory::startJob(const QUrl &url, QObject *parent)
     auto req = makeRequest(Utility::concatUrlPath(url, QStringLiteral("status.php")));
 
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    // status.php is anonymous. Never attach the account's bearer here: this is the one request
+    // that opts into following redirects, and a redirect to another origin must have nothing to
+    // take with it.
+    req.setAttribute(HttpCredentials::DontAddCredentialsAttribute, true);
     req.setRawHeader(QByteArrayLiteral("OC-Connection-Validator"), QByteArrayLiteral("desktop"));
     req.setMaximumRedirectsAllowed(_maxRedirectsAllowed);
 

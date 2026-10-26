@@ -22,6 +22,7 @@
 #include "syncengine.h"
 
 #include <QAuthenticator>
+#include <QDateTime>
 #include <QLoggingCategory>
 #include <QNetworkReply>
 
@@ -52,7 +53,11 @@ protected:
     {
         QNetworkRequest req(request);
         if (!req.attribute(HttpCredentials::DontAddCredentialsAttribute).toBool()) {
-            if (_cred && _cred->ready() && !_cred->_accessToken.isEmpty()) {
+            // App-credential mode has no refresh token here: once the host's short-lived token
+            // expires, a request must go out without a bearer rather than with a dead one.
+            const bool unexpired = _cred && (_cred->_accessTokenExpiresAt <= 0
+                || QDateTime::currentMSecsSinceEpoch() < _cred->_accessTokenExpiresAt);
+            if (unexpired && _cred->ready() && !_cred->_accessToken.isEmpty()) {
                 req.setRawHeader("Authorization", "Bearer " + _cred->_accessToken.toUtf8());
             }
         }
@@ -221,6 +226,7 @@ bool HttpCredentials::refreshAccessToken()
         }
         _refreshToken = refreshToken;
         _accessToken = accessToken;
+        _accessTokenExpiresAt = 0;
         persist();
     });
     Q_EMIT authenticationStarted();
@@ -229,7 +235,7 @@ bool HttpCredentials::refreshAccessToken()
     return true;
 }
 
-void HttpCredentials::adoptAccessToken(const QString &accessToken)
+void HttpCredentials::adoptAccessToken(const QString &accessToken, qint64 expiresAt)
 {
     if (accessToken.isEmpty()) {
         return;
@@ -243,6 +249,7 @@ void HttpCredentials::adoptAccessToken(const QString &accessToken)
         _oAuthJob.clear();
     }
     _accessToken = accessToken;
+    _accessTokenExpiresAt = expiresAt;
     _refreshToken.clear();
     _previousPassword.clear();
     _fetchErrorString.clear();
@@ -259,6 +266,7 @@ void HttpCredentials::invalidateToken()
         _previousPassword = _accessToken;
     }
     _accessToken = QString();
+    _accessTokenExpiresAt = 0;
     _ready = false;
 
     // clear the session cookie.
